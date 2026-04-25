@@ -1,5 +1,6 @@
 using APIlog.Server.DTOs.Books;
 using APIlog.Server.Infrastructure.Data;
+using APIlog.Server.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace APIlog.Server.Services;
@@ -60,7 +61,38 @@ public class BooksService : IBooksService
             query = query.Where(b => b.BookInStores.Any(bis =>
                 bis.BookStoreId == bookStoreId.Value && bis.BookInStoreQuantity > 0));
 
+        query = q.SortBy?.ToLower() switch
+        {
+            "bookprice"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookPrice)       : query.OrderBy(b => b.BookPrice),
+            "bookpublishyear" => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookPublishYear) : query.OrderBy(b => b.BookPublishYear),
+            "bookpagecount"   => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookPageCount)   : query.OrderBy(b => b.BookPageCount),
+            "bookheight"      => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookHeight)      : query.OrderBy(b => b.BookHeight),
+            "bookwidth"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookWidth)       : query.OrderBy(b => b.BookWidth),
+            "bookdepth"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookDepth)       : query.OrderBy(b => b.BookDepth),
+            "bookstores"      => q.SortOrder == "desc"
+                ? query.OrderByDescending(b => b.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity))
+                : query.OrderBy(b => b.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity)),
+            "publisher"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.Publisher!.PublisherName) : query.OrderBy(b => b.Publisher!.PublisherName),
+            "language"        => q.SortOrder == "desc" ? query.OrderByDescending(b => b.Language!.LanguageName)   : query.OrderBy(b => b.Language!.LanguageName),
+            "covertype"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.CoverType!.CoverTypeName) : query.OrderBy(b => b.CoverType!.CoverTypeName),
+            "subject"         => q.SortOrder == "desc" ? query.OrderByDescending(b => b.Subject!.SubjectName)     : query.OrderBy(b => b.Subject!.SubjectName),
+            "booktype"        => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookType!.BookTypeName)   : query.OrderBy(b => b.BookType!.BookTypeName),
+            "genre"           => q.SortOrder == "desc" ? query.OrderByDescending(b => b.Genre!.GenreName)         : query.OrderBy(b => b.Genre!.GenreName),
+            _                 => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookTitle)                : query.OrderBy(b => b.BookTitle),
+        };
+
         var books = await query.ToListAsync();
+
+        if (q.SortBy?.ToLower() == "authors")
+        {
+            books = q.SortOrder == "desc"
+                ? books.OrderByDescending(b => string.Join(", ",
+                    b.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName)
+                                 .Select(ba => ba.Author.AuthorFullName))).ToList()
+                : books.OrderBy(b => string.Join(", ",
+                    b.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName)
+                                 .Select(ba => ba.Author.AuthorFullName))).ToList();
+        }
 
         return books.Select(b =>
         {
@@ -74,7 +106,7 @@ public class BooksService : IBooksService
             return new BookListItemDto(
                 b.BookId,
                 b.BookTitle,
-                b.BookAuthors.Select(ba => ba.Author.AuthorFullName),
+                b.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName).Select(ba => ba.Author.AuthorFullName),
                 b.BookPrice,
                 b.ISBN,
                 totalQty,
@@ -99,33 +131,109 @@ public class BooksService : IBooksService
 
         if (book is null) return null;
 
-        return new BookDetailDto(
-            book.BookId,
-            book.BookTitle,
-            book.BookPrice,
-            book.ISBN,
-            book.Publisher?.PublisherName,
-            book.Language?.LanguageName,
-            book.CoverType?.CoverTypeName,
-            book.BookPublishYear,
-            book.Subject?.SubjectName,
-            book.BookPageCount,
-            book.BookHeight,
-            book.BookWidth,
-            book.BookDepth,
-            book.BookType?.BookTypeName,
-            book.Genre?.GenreName,
-            book.BookHasIllustrations,
-            book.BookAuthors.Select(ba => ba.Author.AuthorFullName),
-            book.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity),
-            book.BookInStores
-                .Where(bis => bis.BookStore != null)
-                .Select(bis => new BookStockByStoreDto(
-                    bis.BookStoreId ?? 0,
-                    bis.BookStore!.BookStoreName,
-                    bis.BookInStoreQuantity))
-        );
+        return BuildDetailDto(book);
     }
+
+    public async Task<BookDetailDto> CreateBookAsync(CreateBookDto dto)
+    {
+        var book = new Book
+        {
+            BookTitle = dto.BookTitle,
+            BookPrice = dto.BookPrice,
+            ISBN = dto.ISBN,
+            PublisherId = dto.PublisherId,
+            LanguageId = dto.LanguageId,
+            CoverTypeId = dto.CoverTypeId,
+            BookPublishYear = dto.BookPublishYear,
+            SubjectId = dto.SubjectId,
+            BookPageCount = dto.BookPageCount,
+            BookHeight = dto.BookHeight,
+            BookWidth = dto.BookWidth,
+            BookDepth = dto.BookDepth,
+            BookTypeId = dto.BookTypeId,
+            BookGenreId = dto.BookGenreId,
+            BookHasIllustrations = dto.BookHasIllustrations,
+        };
+
+        _db.Books.Add(book);
+        await _db.SaveChangesAsync();
+
+        if (dto.AuthorIds?.Count > 0)
+        {
+            foreach (var authorId in dto.AuthorIds)
+                _db.BooksAuthors.Add(new BookAuthor { BookId = book.BookId, AuthorId = authorId });
+            await _db.SaveChangesAsync();
+        }
+
+        return (await GetBookByIdAsync(book.BookId))!;
+    }
+
+    public async Task<BookDetailDto?> UpdateBookAsync(int bookId, UpdateBookDto dto)
+    {
+        var book = await _db.Books
+            .Include(b => b.BookAuthors)
+            .FirstOrDefaultAsync(b => b.BookId == bookId);
+
+        if (book is null) return null;
+
+        book.BookTitle = dto.BookTitle;
+        book.BookPrice = dto.BookPrice;
+        book.ISBN = dto.ISBN;
+        book.PublisherId = dto.PublisherId;
+        book.LanguageId = dto.LanguageId;
+        book.CoverTypeId = dto.CoverTypeId;
+        book.BookPublishYear = dto.BookPublishYear;
+        book.SubjectId = dto.SubjectId;
+        book.BookPageCount = dto.BookPageCount;
+        book.BookHeight = dto.BookHeight;
+        book.BookWidth = dto.BookWidth;
+        book.BookDepth = dto.BookDepth;
+        book.BookTypeId = dto.BookTypeId;
+        book.BookGenreId = dto.BookGenreId;
+        book.BookHasIllustrations = dto.BookHasIllustrations;
+
+        _db.BooksAuthors.RemoveRange(book.BookAuthors);
+        if (dto.AuthorIds?.Count > 0)
+            foreach (var authorId in dto.AuthorIds)
+                _db.BooksAuthors.Add(new BookAuthor { BookId = book.BookId, AuthorId = authorId });
+
+        await _db.SaveChangesAsync();
+        return await GetBookByIdAsync(book.BookId);
+    }
+
+    private BookDetailDto BuildDetailDto(Book book) => new BookDetailDto(
+        book.BookId,
+        book.BookTitle,
+        book.BookPrice,
+        book.ISBN,
+        book.PublisherId,
+        book.Publisher?.PublisherName,
+        book.LanguageId,
+        book.Language?.LanguageName,
+        book.CoverTypeId,
+        book.CoverType?.CoverTypeName,
+        book.BookPublishYear,
+        book.SubjectId,
+        book.Subject?.SubjectName,
+        book.BookPageCount,
+        book.BookHeight,
+        book.BookWidth,
+        book.BookDepth,
+        book.BookTypeId,
+        book.BookType?.BookTypeName,
+        book.BookGenreId,
+        book.Genre?.GenreName,
+        book.BookHasIllustrations,
+        book.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName).Select(ba => ba.AuthorId),
+        book.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName).Select(ba => ba.Author.AuthorFullName),
+        book.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity),
+        book.BookInStores
+            .Where(bis => bis.BookStore != null)
+            .Select(bis => new BookStockByStoreDto(
+                bis.BookStoreId ?? 0,
+                bis.BookStore!.BookStoreName,
+                bis.BookInStoreQuantity))
+    );
 
     public async Task<IEnumerable<LowStockBranchDto>> GetLowStockAsync(LowStockQueryParams q)
     {

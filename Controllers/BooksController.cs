@@ -49,6 +49,22 @@ public class BooksController : ControllerBase
         return book is null ? NotFound() : Ok(book);
     }
 
+    [HttpPost]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<IActionResult> Create([FromBody] CreateBookDto dto)
+    {
+        var book = await _booksService.CreateBookAsync(dto);
+        return Ok(book);
+    }
+
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateBookDto dto)
+    {
+        var book = await _booksService.UpdateBookAsync(id, dto);
+        return book is null ? NotFound() : Ok(book);
+    }
+
     private int? GetBookStoreId()
     {
         var val = User.FindFirstValue("bookstore_id");
