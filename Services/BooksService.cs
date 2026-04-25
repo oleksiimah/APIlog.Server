@@ -65,11 +65,11 @@ public class BooksService : IBooksService
         return books.Select(b =>
         {
             var totalQty = b.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity);
-            var branchQty = bookStoreId.HasValue
-                ? (int?)b.BookInStores
-                    .FirstOrDefault(bis => bis.BookStoreId == bookStoreId.Value)
-                    ?.BookInStoreQuantity
+            var branchRecord = bookStoreId.HasValue
+                ? b.BookInStores.FirstOrDefault(bis => bis.BookStoreId == bookStoreId.Value)
                 : null;
+            var branchQty = branchRecord is not null ? (int?)branchRecord.BookInStoreQuantity : null;
+            var bookInStoreId = branchRecord?.BookInStoreId;
 
             return new BookListItemDto(
                 b.BookId,
@@ -78,7 +78,8 @@ public class BooksService : IBooksService
                 b.BookPrice,
                 b.ISBN,
                 totalQty,
-                branchQty
+                branchQty,
+                bookInStoreId
             );
         });
     }

@@ -7,7 +7,8 @@ public record BookListItemDto(
     decimal BookPrice,
     string? ISBN,
     int TotalNetworkQuantity,
-    int? BranchQuantity
+    int? BranchQuantity,
+    int? BookInStoreId
 );
 
 public record BookDetailDto(
