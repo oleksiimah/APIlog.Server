@@ -50,6 +50,21 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 // Pipeline
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+    var ex = feature?.Error;
+    context.Response.ContentType = "application/json";
+    context.Response.StatusCode = ex switch
+    {
+        KeyNotFoundException => StatusCodes.Status404NotFound,
+        ArgumentException => StatusCodes.Status400BadRequest,
+        UnauthorizedAccessException => StatusCodes.Status403Forbidden,
+        _ => StatusCodes.Status500InternalServerError
+    };
+    await context.Response.WriteAsJsonAsync(new { error = ex?.Message });
+}));
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
