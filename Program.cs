@@ -1,4 +1,5 @@
 using APIlog.Server.Infrastructure.Data;
+using APIlog.Server.Middleware;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +22,13 @@ FirebaseApp.Create(new AppOptions
 builder.Services.AddDbContext<BookstoreDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+});
+
 // Services
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -38,6 +46,8 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.UseCors();
+app.UseMiddleware<FirebaseAuthMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
