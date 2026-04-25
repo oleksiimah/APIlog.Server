@@ -1,5 +1,6 @@
 using APIlog.Server.Infrastructure.Data;
 using APIlog.Server.Middleware;
+using APIlog.Server.Services;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +30,20 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
 });
 
-// Services
+// Application services
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IBooksService, BooksService>();
+builder.Services.AddScoped<ICustomersService, CustomersService>();
+builder.Services.AddScoped<IBookStoresService, BookStoresService>();
+builder.Services.AddScoped<ISalesService, SalesService>();
+builder.Services.AddScoped<IPaymentsService, PaymentsService>();
+builder.Services.AddScoped<IPurchasesService, PurchasesService>();
+builder.Services.AddScoped<ISuppliesService, SuppliesService>();
+builder.Services.AddScoped<IDictionariesService, DictionariesService>();
+builder.Services.AddScoped<IEmployeesService, EmployeesService>();
+builder.Services.AddScoped<IBranchesService, BranchesService>();
+
+// Controllers + OpenAPI
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
