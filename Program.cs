@@ -1,5 +1,7 @@
+using APIlog.Server.Infrastructure.Data;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +16,10 @@ FirebaseApp.Create(new AppOptions
 {
     Credential = await GoogleCredential.GetApplicationDefaultAsync()
 });
+
+// Database
+builder.Services.AddDbContext<BookstoreDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Services
 builder.Services.AddControllers();
