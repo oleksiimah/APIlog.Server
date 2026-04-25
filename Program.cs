@@ -5,9 +5,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Firebase Admin SDK
 var serviceAccountPath = builder.Configuration["Firebase:ServiceAccountPath"];
+var serviceAccountJson = File.ReadAllText(serviceAccountPath);
 FirebaseApp.Create(new AppOptions
 {
-    Credential = GoogleCredential.FromFile(serviceAccountPath)
+    Credential = GoogleCredential.FromJson(serviceAccountJson)
 });
 
 // Services
