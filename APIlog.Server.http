@@ -1,0 +1,6 @@
+@APIlog.Server_HostAddress = http://localhost:5102
+
+GET {{APIlog.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
