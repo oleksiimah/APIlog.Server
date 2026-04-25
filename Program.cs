@@ -4,11 +4,15 @@ using Google.Apis.Auth.OAuth2;
 var builder = WebApplication.CreateBuilder(args);
 
 // Firebase Admin SDK
-var serviceAccountPath = builder.Configuration["Firebase:ServiceAccountPath"];
-var serviceAccountJson = File.ReadAllText(serviceAccountPath);
+var serviceAccountPath = builder.Configuration["Firebase:ServiceAccountPath"]
+    ?? throw new InvalidOperationException("Firebase:ServiceAccountPath is not configured.");
+Environment.SetEnvironmentVariable(
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    Path.GetFullPath(serviceAccountPath)
+);
 FirebaseApp.Create(new AppOptions
 {
-    Credential = GoogleCredential.FromJson(serviceAccountJson)
+    Credential = await GoogleCredential.GetApplicationDefaultAsync()
 });
 
 // Services
