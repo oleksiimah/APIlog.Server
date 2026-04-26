@@ -42,6 +42,7 @@ builder.Services.AddScoped<ISuppliesService, SuppliesService>();
 builder.Services.AddScoped<IDictionariesService, DictionariesService>();
 builder.Services.AddScoped<IEmployeesService, EmployeesService>();
 builder.Services.AddScoped<IBranchesService, BranchesService>();
+builder.Services.AddScoped<IChartsService, ChartsService>();
 
 // Controllers + OpenAPI
 builder.Services.AddControllers();
