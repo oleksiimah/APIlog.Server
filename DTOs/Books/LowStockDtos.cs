@@ -9,6 +9,7 @@ public record LowStockBranchDto(
 );
 
 public record LowStockBookDto(
+    int BookId,
     string BookTitle,
     int Quantity
 );

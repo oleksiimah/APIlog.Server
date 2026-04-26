@@ -65,6 +65,7 @@ public record SupplySummaryDto(
     DateTime? SupplyReceiptDateTime,
     int EmployeeId,
     string EmployeeFullName,
+    string? EmployeePersonnelNumber,
     decimal? SupplyReceiptTotalAmount,
     IEnumerable<SupplyItemDto> Items
 );

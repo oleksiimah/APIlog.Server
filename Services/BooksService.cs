@@ -245,24 +245,27 @@ public class BooksService : IBooksService
 
     public async Task<IEnumerable<LowStockBranchDto>> GetLowStockAsync(LowStockQueryParams q)
     {
-        var stores = await _db.BookStores.ToListAsync();
+        var storesQuery = _db.BookStores.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q.Search))
-        {
-            stores = stores
-                .Where(s =>
-                    s.BookStoreName.Contains(q.Search, StringComparison.OrdinalIgnoreCase) ||
-                    s.BookStoreCode.Contains(q.Search, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
+            storesQuery = storesQuery.Where(s =>
+                s.BookStoreName.Contains(q.Search) ||
+                s.BookStoreCode.Contains(q.Search));
+
+        var stores = await storesQuery.ToListAsync();
 
         var result = new List<LowStockBranchDto>();
         foreach (var store in stores)
         {
-            var critBooks = await _db.Database
-                .SqlQueryRaw<CriticalBookSpResult>(
-                    "EXEC dbo.sp_CheckCriticalBookLevel {0}, {1}",
-                    store.BookStoreId, q.CriticalThreshold)
+            var critBooks = await _db.BookInStores
+                .Where(bis => bis.BookStoreId == store.BookStoreId
+                           && bis.BookId != null
+                           && bis.BookInStoreQuantity <= q.CriticalThreshold)
+                .OrderBy(bis => bis.BookInStoreQuantity)
+                .Select(bis => new LowStockBookDto(
+                    bis.Book!.BookId,
+                    bis.Book!.BookTitle,
+                    (int)bis.BookInStoreQuantity))
                 .ToListAsync();
 
             result.Add(new LowStockBranchDto(
@@ -270,8 +273,7 @@ public class BooksService : IBooksService
                 store.BookStoreCode,
                 store.BookStoreName,
                 store.BookStoreAddress,
-                critBooks.Select(b => new LowStockBookDto(b.BookTitle, b.CurrentStock))
-            ));
+                critBooks));
         }
 
         return result;

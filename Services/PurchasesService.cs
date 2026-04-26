@@ -256,6 +256,7 @@ public class PurchasesService : IPurchasesService
             sr.SupplyReceiptDateTime,
             sr.EmployeeId ?? 0,
             sr.Employee?.EmployeeFullName ?? string.Empty,
+            sr.Employee?.EmployeePersonnelNumber,
             sr.SupplyReceiptTotalAmount,
             sr.SupplyReceiptItems.Select(si => new SupplyItemDto(
                 si.SupplyReceiptItemId,
