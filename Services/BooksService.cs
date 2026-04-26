@@ -72,6 +72,15 @@ public class BooksService : IBooksService
             "bookstores"      => q.SortOrder == "desc"
                 ? query.OrderByDescending(b => b.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity))
                 : query.OrderBy(b => b.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity)),
+            "branchqty" => bookStoreId.HasValue
+                ? (q.SortOrder == "desc"
+                    ? query.OrderByDescending(b => b.BookInStores
+                        .Where(bis => bis.BookStoreId == bookStoreId.Value)
+                        .Sum(bis => (int)bis.BookInStoreQuantity))
+                    : query.OrderBy(b => b.BookInStores
+                        .Where(bis => bis.BookStoreId == bookStoreId.Value)
+                        .Sum(bis => (int)bis.BookInStoreQuantity)))
+                : (q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookTitle) : query.OrderBy(b => b.BookTitle)),
             "publisher"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.Publisher!.PublisherName) : query.OrderBy(b => b.Publisher!.PublisherName),
             "language"        => q.SortOrder == "desc" ? query.OrderByDescending(b => b.Language!.LanguageName)   : query.OrderBy(b => b.Language!.LanguageName),
             "covertype"       => q.SortOrder == "desc" ? query.OrderByDescending(b => b.CoverType!.CoverTypeName) : query.OrderBy(b => b.CoverType!.CoverTypeName),
