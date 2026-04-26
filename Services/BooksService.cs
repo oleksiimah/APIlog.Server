@@ -245,51 +245,34 @@ public class BooksService : IBooksService
 
     public async Task<IEnumerable<LowStockBranchDto>> GetLowStockAsync(LowStockQueryParams q)
     {
-        var stores = await _db.BookStores
-            .Include(bs => bs.BookInStores)
-                .ThenInclude(bis => bis.Book)
-                    .ThenInclude(b => b!.BookAuthors)
-                        .ThenInclude(ba => ba.Author)
-            .ToListAsync();
+        var stores = await _db.BookStores.ToListAsync();
 
-        var result = stores
-            .Select(store =>
-            {
-                var criticalBooks = store.BookInStores
-                    .Where(bis => bis.BookInStoreQuantity <= q.CriticalThreshold && bis.Book != null)
-                    .Select(bis =>
-                    {
-                        var book = bis.Book!;
-                        if (!string.IsNullOrWhiteSpace(q.Search) &&
-                            !book.BookTitle.Contains(q.Search, StringComparison.OrdinalIgnoreCase))
-                            return null;
+        if (!string.IsNullOrWhiteSpace(q.Search))
+        {
+            stores = stores
+                .Where(s =>
+                    s.BookStoreName.Contains(q.Search, StringComparison.OrdinalIgnoreCase) ||
+                    s.BookStoreCode.Contains(q.Search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
 
-                        return new LowStockBookDto(
-                            book.BookId,
-                            bis.BookInStoreId,
-                            book.BookTitle,
-                            book.BookAuthors.Select(ba => ba.Author.AuthorFullName),
-                            book.ISBN,
-                            book.BookPrice,
-                            bis.BookInStoreQuantity
-                        );
-                    })
-                    .Where(x => x != null)
-                    .Cast<LowStockBookDto>()
-                    .ToList();
+        var result = new List<LowStockBranchDto>();
+        foreach (var store in stores)
+        {
+            var critBooks = await _db.Database
+                .SqlQueryRaw<CriticalBookSpResult>(
+                    "EXEC dbo.sp_CheckCriticalBookLevel {0}, {1}",
+                    store.BookStoreId, q.CriticalThreshold)
+                .ToListAsync();
 
-                if (criticalBooks.Count == 0) return null;
-
-                return new LowStockBranchDto(
-                    store.BookStoreId,
-                    store.BookStoreCode,
-                    store.BookStoreName,
-                    store.BookStoreAddress,
-                    criticalBooks
-                );
-            })
-            .Where(x => x != null)
-            .Cast<LowStockBranchDto>();
+            result.Add(new LowStockBranchDto(
+                store.BookStoreId,
+                store.BookStoreCode,
+                store.BookStoreName,
+                store.BookStoreAddress,
+                critBooks.Select(b => new LowStockBookDto(b.BookTitle, b.CurrentStock))
+            ));
+        }
 
         return result;
     }

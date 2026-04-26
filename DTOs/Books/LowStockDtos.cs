@@ -9,19 +9,19 @@ public record LowStockBranchDto(
 );
 
 public record LowStockBookDto(
-    int BookId,
-    int BookInStoreId,
     string BookTitle,
-    IEnumerable<string> Authors,
-    string? ISBN,
-    decimal BookPrice,
     int Quantity
 );
 
 public class LowStockQueryParams
 {
     public string? Search { get; set; }
-    public string? SortBy { get; set; }
-    public string SortOrder { get; set; } = "asc";
     public int CriticalThreshold { get; set; } = 5;
+}
+
+/// <summary>Mapped from sp_CheckCriticalBookLevel result columns.</summary>
+public class CriticalBookSpResult
+{
+    public string BookTitle { get; set; } = string.Empty;
+    public short CurrentStock { get; set; }
 }
