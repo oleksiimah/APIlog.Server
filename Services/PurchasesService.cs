@@ -42,16 +42,33 @@ public class PurchasesService : IPurchasesService
         if (q.BookIds?.Count > 0)
             query = query.Where(pr => pr.PurchaseReceiptItems.Any(pi =>
                 pi.BookId.HasValue && q.BookIds.Contains(pi.BookId.Value)));
+        if (q.SupplierIds?.Count > 0)
+            query = query.Where(pr => pr.SupplierId.HasValue && q.SupplierIds.Contains(pr.SupplierId.Value));
 
         query = (q.SortBy, q.SortOrder) switch
         {
-            ("amount", "asc") => query.OrderBy(pr => pr.PurchaseReceiptTotalAmount),
-            ("amount", _) => query.OrderByDescending(pr => pr.PurchaseReceiptTotalAmount),
-            (_, "asc") => query.OrderBy(pr => pr.PurchaseReceiptDateTime),
-            _ => query.OrderByDescending(pr => pr.PurchaseReceiptDateTime)
+            ("amount", "asc")   => query.OrderBy(pr => pr.PurchaseReceiptTotalAmount),
+            ("amount", _)       => query.OrderByDescending(pr => pr.PurchaseReceiptTotalAmount),
+            ("supplier", "asc") => query.OrderBy(pr => pr.Supplier != null ? pr.Supplier.SupplierName : ""),
+            ("supplier", _)     => query.OrderByDescending(pr => pr.Supplier != null ? pr.Supplier.SupplierName : ""),
+            ("employee", "asc") => query.OrderBy(pr => pr.Employee != null ? pr.Employee.EmployeeFullName : ""),
+            ("employee", _)     => query.OrderByDescending(pr => pr.Employee != null ? pr.Employee.EmployeeFullName : ""),
+            ("status", "asc")   => query.OrderBy(pr => pr.PurchaseReceiptStatus != null ? pr.PurchaseReceiptStatus.PurchaseReceiptStatusName : ""),
+            ("status", _)       => query.OrderByDescending(pr => pr.PurchaseReceiptStatus != null ? pr.PurchaseReceiptStatus.PurchaseReceiptStatusName : ""),
+            ("number", "asc")   => query.OrderBy(pr => pr.PurchaseReceiptNumber),
+            ("number", _)       => query.OrderByDescending(pr => pr.PurchaseReceiptNumber),
+            ("itemcount", "asc")   => query.OrderBy(pr => pr.PurchaseReceiptItems.Count()),
+            ("itemcount", _)       => query.OrderByDescending(pr => pr.PurchaseReceiptItems.Count()),
+            ("totalqty", "asc")    => query.OrderBy(pr => pr.PurchaseReceiptItems.Sum(pi => (int)pi.PurchaseReceiptItemQuantity)),
+            ("totalqty", _)        => query.OrderByDescending(pr => pr.PurchaseReceiptItems.Sum(pi => (int)pi.PurchaseReceiptItemQuantity)),
+            (_, "asc")          => query.OrderBy(pr => pr.PurchaseReceiptDateTime),
+            _                   => query.OrderByDescending(pr => pr.PurchaseReceiptDateTime)
         };
 
-        var receipts = await query.ToListAsync();
+        var receipts = await query
+            .Skip((q.Page - 1) * q.PageSize)
+            .Take(q.PageSize)
+            .ToListAsync();
         return receipts.Select(pr => MapToListItem(pr));
     }
 
@@ -165,7 +182,8 @@ public class PurchasesService : IPurchasesService
                     .ThenInclude(b => b!.BookAuthors)
                         .ThenInclude(ba => ba.Author)
             .Include(pr => pr.SupplyReceipts).ThenInclude(sr => sr.Employee)
-        .Include(pr => pr.SupplyReceipts).ThenInclude(sr => sr.SupplyReceiptItems)
+            .Include(pr => pr.SupplyReceipts).ThenInclude(sr => sr.SupplyReceiptItems)
+                .ThenInclude(si => si.BookInStore).ThenInclude(bis => bis!.BookStore)
             .FirstAsync(pr => pr.PurchaseReceiptId == id);
     }
 
@@ -180,6 +198,7 @@ public class PurchasesService : IPurchasesService
         var items = pr.PurchaseReceiptItems
             .Where(pi => pi.Book != null)
             .Select(pi => new PurchaseItemSummaryDto(
+                pi.PurchaseReceiptItemId,
                 pi.Book!.BookId,
                 pi.Book.BookTitle,
                 pi.Book.BookAuthors.Select(ba => ba.Author.AuthorFullName),
@@ -194,8 +213,13 @@ public class PurchasesService : IPurchasesService
             pr.PurchaseReceiptNumber,
             pr.PurchaseReceiptDateTime,
             pr.PurchaseReceiptSupplyDateTime,
+            pr.EmployeeId,
             pr.Employee?.EmployeeFullName ?? string.Empty,
+            pr.Employee?.EmployeePersonnelNumber,
+            pr.SupplierId,
             pr.Supplier?.SupplierName,
+            pr.Supplier?.SupplierAddress,
+            pr.PurchaseReceiptStatusId ?? 0,
             pr.PurchaseReceiptStatus?.PurchaseReceiptStatusName ?? string.Empty,
             pr.PurchaseReceiptTotalAmount,
             pr.PurchaseReceiptItems.Count,
@@ -230,8 +254,16 @@ public class PurchasesService : IPurchasesService
             sr.SupplyReceiptId,
             sr.SupplyReceiptNumber,
             sr.SupplyReceiptDateTime,
+            sr.EmployeeId ?? 0,
             sr.Employee?.EmployeeFullName ?? string.Empty,
-            sr.SupplyReceiptTotalAmount
+            sr.SupplyReceiptTotalAmount,
+            sr.SupplyReceiptItems.Select(si => new SupplyItemDto(
+                si.SupplyReceiptItemId,
+                si.PurchaseReceiptItemId ?? 0,
+                si.BookInStore?.BookStoreId,
+                si.BookInStore?.BookStore?.BookStoreName,
+                si.SupplyReceiptItemQuantity
+            ))
         ));
 
         return new PurchaseReceiptDetailDto(
@@ -241,6 +273,7 @@ public class PurchasesService : IPurchasesService
             pr.PurchaseReceiptSupplyDateTime,
             pr.EmployeeId ?? 0,
             pr.Employee?.EmployeeFullName ?? string.Empty,
+            pr.Employee?.EmployeePersonnelNumber,
             pr.SupplierId,
             pr.Supplier?.SupplierName,
             pr.Supplier?.SupplierAddress,

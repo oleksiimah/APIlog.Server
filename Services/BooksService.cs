@@ -81,17 +81,25 @@ public class BooksService : IBooksService
             _                 => q.SortOrder == "desc" ? query.OrderByDescending(b => b.BookTitle)                : query.OrderBy(b => b.BookTitle),
         };
 
-        var books = await query.ToListAsync();
-
+        List<Book> books;
         if (q.SortBy?.ToLower() == "authors")
         {
-            books = q.SortOrder == "desc"
-                ? books.OrderByDescending(b => string.Join(", ",
+            var all = await query.ToListAsync();
+            var sorted = q.SortOrder == "desc"
+                ? all.OrderByDescending(b => string.Join(", ",
                     b.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName)
-                                 .Select(ba => ba.Author.AuthorFullName))).ToList()
-                : books.OrderBy(b => string.Join(", ",
+                                 .Select(ba => ba.Author.AuthorFullName)))
+                : all.OrderBy(b => string.Join(", ",
                     b.BookAuthors.OrderBy(ba => ba.Author.AuthorFullName)
-                                 .Select(ba => ba.Author.AuthorFullName))).ToList();
+                                 .Select(ba => ba.Author.AuthorFullName)));
+            books = sorted.Skip((q.Page - 1) * q.PageSize).Take(q.PageSize).ToList();
+        }
+        else
+        {
+            books = await query
+                .Skip((q.Page - 1) * q.PageSize)
+                .Take(q.PageSize)
+                .ToListAsync();
         }
 
         return books.Select(b =>

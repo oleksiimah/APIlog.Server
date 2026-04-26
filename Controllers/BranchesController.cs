@@ -8,7 +8,7 @@ namespace APIlog.Server.Controllers;
 
 [ApiController]
 [Route("api/branches")]
-[Authorize(Roles = AppRoles.Admin)]
+[Authorize]
 public class BranchesController : ControllerBase
 {
     private readonly IBranchesService _branchesService;
@@ -26,6 +26,7 @@ public class BranchesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Create([FromBody] CreateBranchDto dto)
     {
         var branch = await _branchesService.CreateBranchAsync(dto);
@@ -33,6 +34,7 @@ public class BranchesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateBranchDto dto)
     {
         var branch = await _branchesService.UpdateBranchAsync(id, dto);
@@ -40,6 +42,7 @@ public class BranchesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
         await _branchesService.DeleteBranchAsync(id);

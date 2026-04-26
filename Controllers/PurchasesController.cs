@@ -9,7 +9,6 @@ namespace APIlog.Server.Controllers;
 
 [ApiController]
 [Route("api/purchases")]
-[Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin}")]
 public class PurchasesController : ControllerBase
 {
     private readonly IPurchasesService _purchasesService;
@@ -20,6 +19,7 @@ public class PurchasesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin},{AppRoles.Storekeeper}")]
     public async Task<IActionResult> GetAll([FromQuery] PurchasesQueryParams queryParams)
     {
         var receipts = await _purchasesService.GetPurchaseReceiptsAsync(queryParams);
@@ -27,6 +27,7 @@ public class PurchasesController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin},{AppRoles.Storekeeper}")]
     public async Task<IActionResult> GetById(int id)
     {
         var receipt = await _purchasesService.GetPurchaseReceiptByIdAsync(id);
@@ -34,6 +35,7 @@ public class PurchasesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin}")]
     public async Task<IActionResult> Create([FromBody] CreatePurchaseReceiptDto dto)
     {
         var employeeId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -42,6 +44,7 @@ public class PurchasesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdatePurchaseReceiptDto dto)
     {
         var receipt = await _purchasesService.UpdatePurchaseReceiptAsync(id, dto);
@@ -49,6 +52,7 @@ public class PurchasesController : ControllerBase
     }
 
     [HttpPatch("{id:int}/cancel")]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin}")]
     public async Task<IActionResult> Cancel(int id)
     {
         await _purchasesService.CancelPurchaseReceiptAsync(id);

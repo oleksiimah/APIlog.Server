@@ -5,8 +5,13 @@ public record PurchaseReceiptListItemDto(
     string PurchaseReceiptNumber,
     DateTime? PurchaseReceiptDateTime,
     DateTime? PurchaseReceiptSupplyDateTime,
+    int? EmployeeId,
     string EmployeeFullName,
+    string? EmployeePersonnelNumber,
+    int? SupplierId,
     string? SupplierName,
+    string? SupplierAddress,
+    int StatusId,
     string StatusName,
     decimal? PurchaseReceiptTotalAmount,
     int ItemCount,
@@ -15,6 +20,7 @@ public record PurchaseReceiptListItemDto(
 );
 
 public record PurchaseItemSummaryDto(
+    int PurchaseReceiptItemId,
     int BookId,
     string BookTitle,
     IEnumerable<string> Authors,
@@ -31,6 +37,7 @@ public record PurchaseReceiptDetailDto(
     DateTime? PurchaseReceiptSupplyDateTime,
     int EmployeeId,
     string EmployeeFullName,
+    string? EmployeePersonnelNumber,
     int? SupplierId,
     string? SupplierName,
     string? SupplierAddress,
@@ -56,8 +63,18 @@ public record SupplySummaryDto(
     int SupplyReceiptId,
     string SupplyReceiptNumber,
     DateTime? SupplyReceiptDateTime,
+    int EmployeeId,
     string EmployeeFullName,
-    decimal? SupplyReceiptTotalAmount
+    decimal? SupplyReceiptTotalAmount,
+    IEnumerable<SupplyItemDto> Items
+);
+
+public record SupplyItemDto(
+    int SupplyReceiptItemId,
+    int PurchaseOrderItemId,
+    int? BookStoreId,
+    string? BookStoreName,
+    int SupplyReceiptItemQuantity
 );
 
 public record CreatePurchaseReceiptDto(

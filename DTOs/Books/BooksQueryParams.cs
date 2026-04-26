@@ -27,4 +27,7 @@ public class BooksQueryParams
     public List<int>? SubjectIds { get; set; }
     public List<int>? BookTypeIds { get; set; }
     public List<int>? GenreIds { get; set; }
+
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
 }

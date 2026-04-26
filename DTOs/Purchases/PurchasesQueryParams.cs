@@ -14,4 +14,8 @@ public class PurchasesQueryParams
     public List<int>? BookIds { get; set; }
     public List<int>? EmployeeIds { get; set; }
     public List<int>? StatusIds { get; set; }
+    public List<int>? SupplierIds { get; set; }
+
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
 }
