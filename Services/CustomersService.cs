@@ -14,20 +14,23 @@ public class CustomersService : ICustomersService
         _db = db;
     }
 
-    public async Task<IEnumerable<CustomerDto>> SearchCustomersAsync(string? phone, string? email)
+    public async Task<IEnumerable<CustomerDto>> SearchCustomersAsync(string? phone, string? email, string? name)
     {
-        if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(email))
+        if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(name))
             return [];
+
+        var hasPhone = !string.IsNullOrWhiteSpace(phone);
+        var hasEmail = !string.IsNullOrWhiteSpace(email);
+        var hasName  = !string.IsNullOrWhiteSpace(name);
 
         var query = _db.Customers.AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(phone))
-            query = query.Where(c => c.CustomerPhoneNumber != null &&
-                c.CustomerPhoneNumber.Contains(phone));
-
-        if (!string.IsNullOrWhiteSpace(email))
-            query = query.Where(c => c.CustomerEmail != null &&
-                c.CustomerEmail.Contains(email));
+        if (hasPhone)
+            query = query.Where(c => c.CustomerPhoneNumber != null && c.CustomerPhoneNumber.Contains(phone!));
+        if (hasEmail)
+            query = query.Where(c => c.CustomerEmail != null && c.CustomerEmail.Contains(email!));
+        if (hasName)
+            query = query.Where(c => c.CustomerFullName.Contains(name!));
 
         var customers = await query.ToListAsync();
 

@@ -18,9 +18,12 @@ public class CustomersController : ControllerBase
     }
 
     [HttpGet("search")]
-    public async Task<IActionResult> Search([FromQuery] string? phone, [FromQuery] string? email)
+    public async Task<IActionResult> Search(
+        [FromQuery] string? phone,
+        [FromQuery] string? email,
+        [FromQuery] string? name)
     {
-        var customers = await _customersService.SearchCustomersAsync(phone, email);
+        var customers = await _customersService.SearchCustomersAsync(phone, email, name);
         return Ok(customers);
     }
 }

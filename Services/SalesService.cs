@@ -76,13 +76,36 @@ public class SalesService : ISalesService
             };
         }
 
-        query = (q.SortBy, q.SortOrder) switch
+        if (q.ItemCountMin.HasValue)
+            receipts = receipts.Where(sr => sr.SaleReceiptItems.Count >= q.ItemCountMin.Value).ToList();
+        if (q.ItemCountMax.HasValue)
+            receipts = receipts.Where(sr => sr.SaleReceiptItems.Count <= q.ItemCountMax.Value).ToList();
+        if (q.TotalQtyMin.HasValue)
+            receipts = receipts.Where(sr => sr.SaleReceiptItems.Sum(si => (int)si.SaleReceiptItemQuantity) >= q.TotalQtyMin.Value).ToList();
+        if (q.TotalQtyMax.HasValue)
+            receipts = receipts.Where(sr => sr.SaleReceiptItems.Sum(si => (int)si.SaleReceiptItemQuantity) <= q.TotalQtyMax.Value).ToList();
+
+        receipts = (q.SortBy?.ToLower(), q.SortOrder?.ToLower()) switch
         {
-            ("amount", "desc") => query.OrderByDescending(sr => sr.SalesReceiptTotalAmount),
-            ("amount", _) => query.OrderBy(sr => sr.SalesReceiptTotalAmount),
-            (_, "asc") => query.OrderBy(sr => sr.SalesReceiptDateTime),
-            _ => query.OrderByDescending(sr => sr.SalesReceiptDateTime)
+            ("amount", "asc")              => receipts.OrderBy(sr => sr.SalesReceiptTotalAmount).ToList(),
+            ("amount", _)                  => receipts.OrderByDescending(sr => sr.SalesReceiptTotalAmount).ToList(),
+            ("salesreceiptnumber", "desc") => receipts.OrderByDescending(sr => sr.SalesReceiptNumber).ToList(),
+            ("salesreceiptnumber", _)      => receipts.OrderBy(sr => sr.SalesReceiptNumber).ToList(),
+            ("employee", "desc")           => receipts.OrderByDescending(sr => sr.Employee?.EmployeeFullName).ToList(),
+            ("employee", _)                => receipts.OrderBy(sr => sr.Employee?.EmployeeFullName).ToList(),
+            ("customer", "desc")           => receipts.OrderByDescending(sr => sr.Customer?.CustomerFullName).ToList(),
+            ("customer", _)                => receipts.OrderBy(sr => sr.Customer?.CustomerFullName).ToList(),
+            ("itemcount", "asc")           => receipts.OrderBy(sr => sr.SaleReceiptItems.Count).ToList(),
+            ("itemcount", _)               => receipts.OrderByDescending(sr => sr.SaleReceiptItems.Count).ToList(),
+            ("totalqty", "asc")            => receipts.OrderBy(sr => sr.SaleReceiptItems.Sum(si => (int)si.SaleReceiptItemQuantity)).ToList(),
+            ("totalqty", _)                => receipts.OrderByDescending(sr => sr.SaleReceiptItems.Sum(si => (int)si.SaleReceiptItemQuantity)).ToList(),
+            (_, "asc")                     => receipts.OrderBy(sr => sr.SalesReceiptDateTime).ToList(),
+            _                              => receipts.OrderByDescending(sr => sr.SalesReceiptDateTime).ToList()
         };
+
+        var page = Math.Max(1, q.Page);
+        var pageSize = Math.Clamp(q.PageSize, 1, 100);
+        receipts = receipts.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
         return receipts.Select(sr => MapToListItem(sr));
     }
@@ -224,8 +247,14 @@ public class SalesService : ISalesService
             sr.SalesReceiptId,
             sr.SalesReceiptNumber,
             sr.SalesReceiptDateTime,
+            sr.CustomerId,
             sr.Customer?.CustomerFullName,
+            sr.Customer?.CustomerPhoneNumber,
+            sr.Customer?.CustomerEmail,
+            sr.EmployeeId,
             sr.Employee?.EmployeeFullName ?? string.Empty,
+            sr.Employee?.EmployeePersonnelNumber,
+            sr.Employee?.BookStoreId,
             sr.SalesReceiptTotalAmount,
             paymentStatus,
             sr.SaleReceiptItems.Count,
@@ -279,6 +308,7 @@ public class SalesService : ISalesService
             sr.Customer?.CustomerEmail,
             sr.EmployeeId ?? 0,
             sr.Employee?.EmployeeFullName ?? string.Empty,
+            sr.Employee?.EmployeePersonnelNumber,
             sr.Employee?.BookStoreId ?? 0,
             sr.Employee?.BookStore?.BookStoreName ?? string.Empty,
             sr.SalesReceiptTotalAmount,

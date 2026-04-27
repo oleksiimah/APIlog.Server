@@ -15,4 +15,12 @@ public class SalesQueryParams
     public List<int>? EmployeeIds { get; set; }
     public List<int>? CustomerIds { get; set; }
     public string? PaymentStatus { get; set; }
+
+    public int? ItemCountMin { get; set; }
+    public int? ItemCountMax { get; set; }
+    public int? TotalQtyMin { get; set; }
+    public int? TotalQtyMax { get; set; }
+
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
 }
