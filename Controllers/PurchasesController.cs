@@ -58,4 +58,20 @@ public class PurchasesController : ControllerBase
         await _purchasesService.CancelPurchaseReceiptAsync(id);
         return NoContent();
     }
+
+    [HttpPatch("{id:int}/restore")]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin}")]
+    public async Task<IActionResult> Restore(int id)
+    {
+        await _purchasesService.RestorePurchaseReceiptAsync(id);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _purchasesService.DeletePurchaseReceiptAsync(id);
+        return NoContent();
+    }
 }

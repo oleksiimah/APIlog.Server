@@ -81,19 +81,9 @@ public class PurchasesService : IPurchasesService
     public async Task<PurchaseReceiptDetailDto> CreatePurchaseReceiptAsync(
         CreatePurchaseReceiptDto dto, int employeeId)
     {
-        int? supplierId = dto.SupplierId;
-
-        if (supplierId is null && !string.IsNullOrWhiteSpace(dto.SupplierName))
-        {
-            var supplier = new Supplier
-            {
-                SupplierName = dto.SupplierName,
-                SupplierAddress = dto.SupplierAddress
-            };
-            _db.Suppliers.Add(supplier);
-            await _db.SaveChangesAsync();
-            supplierId = supplier.SupplierId;
-        }
+        int? supplierId = await ResolveSupplierAsync(dto.SupplierId, dto.SupplierName, dto.SupplierAddress);
+        if (supplierId is null)
+            throw new ArgumentException("Постачальник є обов'язковим для закупівлі.");
 
         var pendingStatus = await _db.PurchaseReceiptStatuses
             .FirstOrDefaultAsync(s => s.PurchaseReceiptStatusName == "в обробці")
@@ -101,7 +91,7 @@ public class PurchasesService : IPurchasesService
 
         var receipt = new PurchaseReceipt
         {
-            PurchaseReceiptNumber = GenerateReceiptNumber("P"),
+            PurchaseReceiptNumber = await GenerateReceiptNumberAsync(),
             SupplierId = supplierId,
             EmployeeId = employeeId,
             PurchaseReceiptSupplyDateTime = dto.PurchaseReceiptSupplyDateTime,
@@ -137,7 +127,11 @@ public class PurchasesService : IPurchasesService
             .FirstOrDefaultAsync(pr => pr.PurchaseReceiptId == id)
             ?? throw new KeyNotFoundException($"PurchaseReceipt {id} not found.");
 
-        receipt.SupplierId = dto.SupplierId;
+        int? supplierId = await ResolveSupplierAsync(dto.SupplierId, dto.SupplierName, dto.SupplierAddress);
+        if (supplierId is null)
+            throw new ArgumentException("Постачальник є обов'язковим для закупівлі.");
+
+        receipt.SupplierId = supplierId;
         receipt.PurchaseReceiptSupplyDateTime = dto.PurchaseReceiptSupplyDateTime;
 
         foreach (var item in dto.Items)
@@ -159,7 +153,6 @@ public class PurchasesService : IPurchasesService
     public async Task CancelPurchaseReceiptAsync(int id)
     {
         var receipt = await _db.PurchaseReceipts
-            .Include(pr => pr.PurchaseReceiptStatus)
             .FirstOrDefaultAsync(pr => pr.PurchaseReceiptId == id)
             ?? throw new KeyNotFoundException($"PurchaseReceipt {id} not found.");
 
@@ -168,6 +161,32 @@ public class PurchasesService : IPurchasesService
             ?? throw new InvalidOperationException("Cancelled status not found in dictionary.");
 
         receipt.PurchaseReceiptStatusId = cancelledStatus.PurchaseReceiptStatusId;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task RestorePurchaseReceiptAsync(int id)
+    {
+        var receipt = await _db.PurchaseReceipts
+            .FirstOrDefaultAsync(pr => pr.PurchaseReceiptId == id)
+            ?? throw new KeyNotFoundException($"PurchaseReceipt {id} not found.");
+
+        var pendingStatus = await _db.PurchaseReceiptStatuses
+            .FirstOrDefaultAsync(s => s.PurchaseReceiptStatusName == "в обробці")
+            ?? await _db.PurchaseReceiptStatuses.FirstAsync();
+
+        receipt.PurchaseReceiptStatusId = pendingStatus.PurchaseReceiptStatusId;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeletePurchaseReceiptAsync(int id)
+    {
+        var receipt = await _db.PurchaseReceipts
+            .Include(pr => pr.PurchaseReceiptItems)
+            .FirstOrDefaultAsync(pr => pr.PurchaseReceiptId == id)
+            ?? throw new KeyNotFoundException($"PurchaseReceipt {id} not found.");
+
+        _db.PurchaseReceiptItems.RemoveRange(receipt.PurchaseReceiptItems);
+        _db.PurchaseReceipts.Remove(receipt);
         await _db.SaveChangesAsync();
     }
 
@@ -285,6 +304,44 @@ public class PurchasesService : IPurchasesService
         );
     }
 
-    private static string GenerateReceiptNumber(string prefix)
-        => prefix + Guid.NewGuid().ToString("N")[..12].ToUpper();
+    /// <summary>
+    /// Exact 2-field supplier match: find existing supplier whose name AND address equal
+    /// the provided values. If no match: create new. If no name provided: returns null.
+    /// </summary>
+    private async Task<int?> ResolveSupplierAsync(int? supplierId, string? name, string? address)
+    {
+        if (supplierId.HasValue) return supplierId;
+
+        var nm = name?.Trim();
+        if (string.IsNullOrWhiteSpace(nm)) return null;
+
+        var addr = string.IsNullOrWhiteSpace(address) ? null : address!.Trim();
+
+        var existing = await _db.Suppliers.FirstOrDefaultAsync(s =>
+            s.SupplierName == nm && s.SupplierAddress == addr);
+
+        if (existing is not null) return existing.SupplierId;
+
+        var newSupplier = new Supplier { SupplierName = nm, SupplierAddress = addr };
+        _db.Suppliers.Add(newSupplier);
+        await _db.SaveChangesAsync();
+        return newSupplier.SupplierId;
+    }
+
+    private async Task<string> GenerateReceiptNumberAsync()
+    {
+        var prefix = "P" + DateTime.Today.ToString("yyyyMMdd");
+
+        var last = await _db.PurchaseReceipts
+            .Where(pr => pr.PurchaseReceiptNumber.StartsWith(prefix))
+            .OrderByDescending(pr => pr.PurchaseReceiptNumber)
+            .Select(pr => pr.PurchaseReceiptNumber)
+            .FirstOrDefaultAsync();
+
+        int next = 1;
+        if (last is not null && int.TryParse(last[prefix.Length..], out var seq))
+            next = seq + 1;
+
+        return $"{prefix}{next:D4}";
+    }
 }

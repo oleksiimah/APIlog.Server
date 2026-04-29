@@ -106,8 +106,15 @@ public class BookstoreDbContext : DbContext
             .Property(bis => bis.BookInStoreQuantity)
             .HasDefaultValue((short)0);
 
-        // SaleReceiptItems has a DB trigger — tell EF Core to avoid MERGE...OUTPUT
+        // Tables with DB triggers — tell EF Core to avoid OUTPUT clause without INTO
         modelBuilder.Entity<SaleReceiptItem>()
-            .ToTable(tb => tb.HasTrigger("SaleReceiptItems_Trigger"));
+            .ToTable(tb => tb.HasTrigger("trg_SyncSalesReceiptTotalAndStock"));
+        modelBuilder.Entity<PurchaseReceiptItem>()
+            .ToTable(tb => tb.HasTrigger("trg_CalculatePurchaseReceiptTotal"));
+        modelBuilder.Entity<SupplyReceiptItem>()
+            .ToTable(tb => tb.HasTrigger("trg_SyncPurchaseReceiptStatus"))
+            .ToTable(tb => tb.HasTrigger("trg_SyncSupplyReceiptTotalAndStock"));
+        modelBuilder.Entity<Book>()
+            .ToTable(tb => tb.HasTrigger("trg_Books_SyncUnpaidReceipts"));
     }
 }
