@@ -8,7 +8,7 @@ namespace APIlog.Server.Controllers;
 
 [ApiController]
 [Route("api/dictionaries")]
-[Authorize(Roles = AppRoles.Admin)]
+[Authorize]
 public class DictionariesController : ControllerBase
 {
     private readonly IDictionariesService _dictionariesService;
@@ -19,6 +19,7 @@ public class DictionariesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> GetCategories()
     {
         var categories = await _dictionariesService.GetCategoriesAsync();
@@ -33,6 +34,7 @@ public class DictionariesController : ControllerBase
     }
 
     [HttpPost("{entity}")]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Create(string entity, [FromBody] CreateDictionaryItemDto dto)
     {
         var item = await _dictionariesService.CreateItemAsync(entity, dto);
@@ -40,6 +42,7 @@ public class DictionariesController : ControllerBase
     }
 
     [HttpPut("{entity}/{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Update(string entity, int id, [FromBody] UpdateDictionaryItemDto dto)
     {
         var item = await _dictionariesService.UpdateItemAsync(entity, id, dto);
@@ -47,6 +50,7 @@ public class DictionariesController : ControllerBase
     }
 
     [HttpDelete("{entity}/{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Delete(string entity, int id)
     {
         await _dictionariesService.DeleteItemAsync(entity, id);

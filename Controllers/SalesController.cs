@@ -44,22 +44,59 @@ public class SalesController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateSaleReceiptDto dto)
     {
         var employeeId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var receipt = await _salesService.CreateSaleReceiptAsync(dto, employeeId);
-        return CreatedAtAction(nameof(GetById), new { id = receipt.SalesReceiptId }, receipt);
+        try
+        {
+            var receipt = await _salesService.CreateSaleReceiptAsync(dto, employeeId);
+            return CreatedAtAction(nameof(GetById), new { id = receipt.SalesReceiptId }, receipt);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
+        }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateSaleReceiptDto dto)
     {
-        var receipt = await _salesService.UpdateSaleReceiptAsync(id, dto);
-        return Ok(receipt);
+        var receipt = await _salesService.GetSaleReceiptByIdAsync(id);
+        if (receipt == null) return NotFound();
+        
+        var error = CheckEditDeletePermission(receipt);
+        if (error != null) return UnprocessableEntity(new { message = error });
+        
+        try
+        {
+            var updated = await _salesService.UpdateSaleReceiptAsync(id, dto);
+            return Ok(updated);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message });
+        }
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
+        var receipt = await _salesService.GetSaleReceiptByIdAsync(id);
+        if (receipt == null) return NotFound();
+        
+        var error = CheckEditDeletePermission(receipt);
+        if (error != null) return UnprocessableEntity(new { message = error });
+        
         await _salesService.DeleteSaleReceiptAsync(id);
         return NoContent();
+    }
+
+    [HttpGet("{id:int}/available-stores")]
+    public async Task<IActionResult> GetAvailableStores(int id)
+    {
+        var stores = await _salesService.GetAvailableStoresForReceiptAsync(id);
+        return Ok(stores);
     }
 
     [HttpPost("{id:int}/payments")]
@@ -73,5 +110,40 @@ public class SalesController : ControllerBase
     {
         var val = User.FindFirstValue("bookstore_id");
         return int.TryParse(val, out var id) && id > 0 ? id : null;
+    }
+
+    /// <summary>
+    /// Check if a receipt can be edited or deleted.
+    /// Rules:
+    /// - Within 30 minutes of last payment (or creation if no payments): always allowed
+    /// - After 30 minutes: only allowed if not fully paid
+    /// </summary>
+    private string? CheckEditDeletePermission(SaleReceiptDetailDto receipt)
+    {
+        DateTime? referenceTime = receipt.SalesReceiptDateTime;
+
+        // Use last payment datetime if exists
+        if (receipt.Payments.Any())
+        {
+            var lastPayment = receipt.Payments
+                .Where(p => p.PaymentDateTime.HasValue)
+                .OrderByDescending(p => p.PaymentDateTime)
+                .FirstOrDefault();
+            if (lastPayment != null)
+                referenceTime = lastPayment.PaymentDateTime;
+        }
+
+        if (!referenceTime.HasValue)
+            return "Невідомий час створення чека.";
+
+        var age = DateTime.UtcNow - referenceTime.Value;
+        if (age.TotalMinutes <= 30)
+            return null; // Within 30 minutes: always allowed
+
+        // After 30 minutes: check payment status
+        if (receipt.PaymentStatus.Equals("paid", StringComparison.OrdinalIgnoreCase))
+            return "Оплачені чеки неможливо редагувати або видаляти.";
+
+        return null; // Unpaid: allowed
     }
 }

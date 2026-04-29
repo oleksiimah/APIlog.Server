@@ -105,5 +105,9 @@ public class BookstoreDbContext : DbContext
         modelBuilder.Entity<BookInStore>()
             .Property(bis => bis.BookInStoreQuantity)
             .HasDefaultValue((short)0);
+
+        // SaleReceiptItems has a DB trigger — tell EF Core to avoid MERGE...OUTPUT
+        modelBuilder.Entity<SaleReceiptItem>()
+            .ToTable(tb => tb.HasTrigger("SaleReceiptItems_Trigger"));
     }
 }

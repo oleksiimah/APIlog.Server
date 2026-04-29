@@ -43,15 +43,15 @@ public class CustomersService : ICustomersService
 
     public async Task<CustomerDto> GetOrCreateCustomerAsync(string fullName, string? phone, string? email)
     {
-        Customer? existing = null;
+        var name = fullName.Trim();
+        var ph   = string.IsNullOrWhiteSpace(phone) ? null : phone!.Trim();
+        var em   = string.IsNullOrWhiteSpace(email) ? null : email!.Trim();
 
-        if (!string.IsNullOrWhiteSpace(phone))
-            existing = await _db.Customers
-                .FirstOrDefaultAsync(c => c.CustomerPhoneNumber == phone);
-
-        if (existing is null && !string.IsNullOrWhiteSpace(email))
-            existing = await _db.Customers
-                .FirstOrDefaultAsync(c => c.CustomerEmail == email);
+        // Exact 3-field match
+        var existing = await _db.Customers.FirstOrDefaultAsync(c =>
+            c.CustomerFullName    == name &&
+            c.CustomerPhoneNumber == ph   &&
+            c.CustomerEmail       == em);
 
         if (existing is not null)
             return new CustomerDto(existing.CustomerId, existing.CustomerFullName,
@@ -59,9 +59,9 @@ public class CustomersService : ICustomersService
 
         var newCustomer = new Customer
         {
-            CustomerFullName = fullName,
-            CustomerPhoneNumber = phone,
-            CustomerEmail = email
+            CustomerFullName    = name,
+            CustomerPhoneNumber = ph,
+            CustomerEmail       = em
         };
 
         _db.Customers.Add(newCustomer);

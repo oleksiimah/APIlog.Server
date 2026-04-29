@@ -1,6 +1,7 @@
 using APIlog.Server.DTOs.Sales;
 using APIlog.Server.Infrastructure.Data;
 using APIlog.Server.Models;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace APIlog.Server.Services;
@@ -8,12 +9,10 @@ namespace APIlog.Server.Services;
 public class SalesService : ISalesService
 {
     private readonly BookstoreDbContext _db;
-    private readonly ICustomersService _customersService;
 
-    public SalesService(BookstoreDbContext db, ICustomersService customersService)
+    public SalesService(BookstoreDbContext db)
     {
         _db = db;
-        _customersService = customersService;
     }
 
     public async Task<IEnumerable<SaleReceiptListItemDto>> GetSaleReceiptsAsync(
@@ -27,6 +26,9 @@ public class SalesService : ISalesService
                     .ThenInclude(bis => bis!.Book)
                         .ThenInclude(b => b!.BookAuthors)
                             .ThenInclude(ba => ba.Author)
+            .Include(sr => sr.SaleReceiptItems)
+                .ThenInclude(si => si.BookInStore)
+                    .ThenInclude(bis => bis!.BookStore)
             .Include(sr => sr.Payments)
             .AsQueryable();
 
@@ -118,74 +120,175 @@ public class SalesService : ISalesService
 
     public async Task<SaleReceiptDetailDto> CreateSaleReceiptAsync(CreateSaleReceiptDto dto, int employeeId)
     {
+        var itemList = dto.Items.ToList();
+        if (itemList.Count == 0)
+            throw new InvalidOperationException("Кошик порожній. Додайте хоч а б одну книгу.");
+
         var employee = await _db.Employees
             .Include(e => e.BookStore)
             .FirstOrDefaultAsync(e => e.EmployeeId == employeeId)
-            ?? throw new InvalidOperationException("Employee not found.");
+            ?? throw new InvalidOperationException("Касира не знайдено.");
 
-        int? customerId = dto.CustomerId;
-        if (customerId is null && !string.IsNullOrWhiteSpace(dto.CustomerFullName))
+        var receiptNumber = await GenerateNextReceiptNumberAsync(
+            employee.EmployeePersonnelNumber ?? "UNK01-0000");
+
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            var customer = await _customersService.GetOrCreateCustomerAsync(
-                dto.CustomerFullName, dto.CustomerPhoneNumber, dto.CustomerEmail);
-            customerId = customer.CustomerId;
-        }
-
-        var receipt = new SalesReceipt
-        {
-            SalesReceiptNumber = GenerateReceiptNumber("S"),
-            CustomerId = customerId,
-            EmployeeId = employeeId
-        };
-
-        _db.SalesReceipts.Add(receipt);
-        await _db.SaveChangesAsync();
-
-        foreach (var item in dto.Items)
-        {
-            _db.SaleReceiptItems.Add(new SaleReceiptItem
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            try
             {
-                SalesReceiptId = receipt.SalesReceiptId,
-                SaleBookInStoreId = item.BookInStoreId,
-                SaleReceiptItemQuantity = (byte)item.Quantity
-            });
-        }
+                // ── 1. Stock validation ───────────────────────────────────────────
+                var bisIds = itemList.Select(i => i.SaleBookInStoreId).Distinct().ToList();
+                var stocks = await _db.BookInStores
+                    .Where(bis => bisIds.Contains(bis.BookInStoreId))
+                    .Include(bis => bis.Book)
+                    .ToDictionaryAsync(bis => bis.BookInStoreId);
 
-        var bis = await _db.BookInStores
-            .Where(b => dto.Items.Select(i => i.BookInStoreId).Contains(b.BookInStoreId))
-            .Include(b => b.Book)
-            .ToListAsync();
+                var shortfall = itemList
+                    .Where(i => !stocks.TryGetValue(i.SaleBookInStoreId, out var s)
+                                || s.BookInStoreQuantity < i.SaleReceiptItemQuantity)
+                    .Select(i => stocks.TryGetValue(i.SaleBookInStoreId, out var s)
+                        ? (s.Book?.BookTitle ?? $"позиція {i.SaleBookInStoreId}")
+                        : $"позиція {i.SaleBookInStoreId}")
+                    .ToList();
 
-        receipt.SalesReceiptTotalAmount = dto.Items.Sum(item =>
-        {
-            var store = bis.FirstOrDefault(b => b.BookInStoreId == item.BookInStoreId);
-            return (store?.Book?.BookPrice ?? 0) * item.Quantity;
+                if (shortfall.Count > 0)
+                    throw new InvalidOperationException(
+                        "Недостатньо примірників на складі: " + string.Join(", ", shortfall) + ".");
+
+                // ── 2. Customer resolution (exact 3-field match or create) ──────────
+                var customerId = await ResolveCustomerAsync(
+                    dto.CustomerId, dto.CustomerFullName,
+                    dto.CustomerPhoneNumber, dto.CustomerEmail);
+
+                // ── 3. Create receipt + items (single SaveChangesAsync → trigger fires) ─
+                var receipt = new SalesReceipt
+                {
+                    SalesReceiptNumber = receiptNumber,
+                    CustomerId         = customerId,
+                    EmployeeId         = employeeId
+                };
+                _db.SalesReceipts.Add(receipt);
+                await _db.SaveChangesAsync();
+
+                foreach (var item in itemList)
+                {
+                    _db.SaleReceiptItems.Add(new SaleReceiptItem
+                    {
+                        SalesReceiptId          = receipt.SalesReceiptId,
+                        SaleBookInStoreId       = item.SaleBookInStoreId,
+                        SaleReceiptItemQuantity = (byte)item.SaleReceiptItemQuantity
+                    });
+                }
+                await _db.SaveChangesAsync();
+
+                await tx.CommitAsync();
+                return MapToDetail(await LoadReceiptWithDetailsAsync(receipt.SalesReceiptId));
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
         });
-
-        await _db.SaveChangesAsync();
-
-        return MapToDetail(await LoadReceiptWithDetailsAsync(receipt.SalesReceiptId));
     }
 
     public async Task<SaleReceiptDetailDto> UpdateSaleReceiptAsync(int id, UpdateSaleReceiptDto dto)
     {
-        var receipt = await _db.SalesReceipts
-            .Include(sr => sr.SaleReceiptItems)
-            .FirstOrDefaultAsync(sr => sr.SalesReceiptId == id)
-            ?? throw new KeyNotFoundException($"SalesReceipt {id} not found.");
-
-        if (dto.CustomerId.HasValue)
-            receipt.CustomerId = dto.CustomerId;
-
-        foreach (var item in dto.Items)
+        var strategy = _db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            var existing = receipt.SaleReceiptItems
-                .FirstOrDefault(si => si.SaleReceiptItemId == item.SaleReceiptItemId);
-            if (existing is not null)
-                existing.SaleReceiptItemQuantity = (byte)item.Quantity;
-        }
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                var receipt = await _db.SalesReceipts
+                    .Include(sr => sr.SaleReceiptItems)
+                        .ThenInclude(sri => sri.BookInStore)
+                            .ThenInclude(bis => bis!.Book)
+                    .FirstOrDefaultAsync(sr => sr.SalesReceiptId == id)
+                    ?? throw new KeyNotFoundException($"SalesReceipt {id} not found.");
 
-        await _db.SaveChangesAsync();
+                // ── 1. Branch transfer (if bookStoreId changed) ───────────────────
+                var currentStoreId = receipt.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId;
+                if (dto.BookStoreId.HasValue && currentStoreId != dto.BookStoreId)
+                {
+                    await _db.Database.ExecuteSqlRawAsync(
+                        "EXEC dbo.sp_ProcessBookStoreTransfer @SalesReceiptId, @NewBookStoreId",
+                        new SqlParameter("@SalesReceiptId", id),
+                        new SqlParameter("@NewBookStoreId", dto.BookStoreId.Value));
+                }
+
+                // ── 2. Customer resolution ────────────────────────────────────
+                receipt.CustomerId = await ResolveCustomerAsync(
+                    dto.CustomerId, dto.CustomerFullName,
+                    dto.CustomerPhoneNumber, dto.CustomerEmail);
+
+                // ── 2. Stock validation for quantity increases ─────────────────
+                var shortfall = new List<string>();
+                var updatableItems = dto.Items.Where(i => i.SaleReceiptItemId > 0).ToList();
+
+                foreach (var updateItem in updatableItems)
+                {
+                    var existing = receipt.SaleReceiptItems
+                        .FirstOrDefault(si => si.SaleReceiptItemId == updateItem.SaleReceiptItemId);
+                    if (existing is null) continue;
+
+                    var newQty = updateItem.SaleReceiptItemQuantity;
+                    var oldQty = (int)existing.SaleReceiptItemQuantity;
+                    var additional = newQty - oldQty;
+
+                    if (additional > 0 && existing.SaleBookInStoreId.HasValue
+                        && existing.BookInStore?.BookInStoreQuantity < additional)
+                    {
+                        shortfall.Add(existing.BookInStore?.Book?.BookTitle
+                                      ?? $"позиція {existing.SaleReceiptItemId}");
+                    }
+
+                    existing.SaleReceiptItemQuantity = (byte)newQty;
+                }
+
+                if (shortfall.Count > 0)
+                    throw new InvalidOperationException(
+                        "Недостатньо примірників на складі: " + string.Join(", ", shortfall) + ".");
+
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
+        });
+
+        // ── 3. Book-store transfer (its own transaction via stored procedure) ─
+        if (dto.BookStoreId.HasValue)
+        {
+            var items = await _db.SaleReceiptItems
+                .Where(sri => sri.SalesReceiptId == id)
+                .Include(sri => sri.BookInStore)
+                .ToListAsync();
+
+            var currentStoreId = items
+                .FirstOrDefault(sri => sri.BookInStore?.BookStoreId != null)
+                ?.BookInStore?.BookStoreId;
+
+            if (currentStoreId.HasValue && currentStoreId.Value != dto.BookStoreId.Value)
+            {
+                try
+                {
+                    await _db.Database.ExecuteSqlInterpolatedAsync(
+                        $"EXEC dbo.sp_ProcessBookStoreTransfer {id}, {dto.BookStoreId.Value}");
+                }
+                catch (Exception ex) when
+                    (ex.Message.Contains("Помилка переміщення") ||
+                     ex.InnerException?.Message.Contains("Помилка переміщення") == true)
+                {
+                    throw new ArgumentException("Недостатньо товару на складі нової книгарні.");
+                }
+            }
+        }
 
         return MapToDetail(await LoadReceiptWithDetailsAsync(id));
     }
@@ -208,12 +311,15 @@ public class SalesService : ISalesService
     {
         return await _db.SalesReceipts
             .Include(sr => sr.Customer)
-            .Include(sr => sr.Employee).ThenInclude(e => e!.BookStore)
+            .Include(sr => sr.Employee)
             .Include(sr => sr.SaleReceiptItems)
                 .ThenInclude(si => si.BookInStore)
                     .ThenInclude(bis => bis!.Book)
                         .ThenInclude(b => b!.BookAuthors)
                             .ThenInclude(ba => ba.Author)
+            .Include(sr => sr.SaleReceiptItems)
+                .ThenInclude(si => si.BookInStore)
+                    .ThenInclude(bis => bis!.BookStore)
             .Include(sr => sr.Payments).ThenInclude(p => p.PaymentMethod)
             .FirstAsync(sr => sr.SalesReceiptId == id);
     }
@@ -233,6 +339,7 @@ public class SalesService : ISalesService
                 var book = si.BookInStore!.Book!;
                 var price = book.BookPrice;
                 return new SaleItemSummaryDto(
+                    si.SaleReceiptItemId,
                     book.BookId,
                     book.BookTitle,
                     book.BookAuthors.Select(ba => ba.Author.AuthorFullName),
@@ -254,7 +361,8 @@ public class SalesService : ISalesService
             sr.EmployeeId,
             sr.Employee?.EmployeeFullName ?? string.Empty,
             sr.Employee?.EmployeePersonnelNumber,
-            sr.Employee?.BookStoreId,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStore?.BookStoreName,
             sr.SalesReceiptTotalAmount,
             paymentStatus,
             sr.SaleReceiptItems.Count,
@@ -309,8 +417,8 @@ public class SalesService : ISalesService
             sr.EmployeeId ?? 0,
             sr.Employee?.EmployeeFullName ?? string.Empty,
             sr.Employee?.EmployeePersonnelNumber,
-            sr.Employee?.BookStoreId ?? 0,
-            sr.Employee?.BookStore?.BookStoreName ?? string.Empty,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId ?? 0,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStore?.BookStoreName ?? string.Empty,
             sr.SalesReceiptTotalAmount,
             paymentStatus,
             items,
@@ -318,6 +426,125 @@ public class SalesService : ISalesService
         );
     }
 
-    private static string GenerateReceiptNumber(string prefix)
-        => prefix + Guid.NewGuid().ToString("N")[..12].ToUpper();
+    public async Task<IEnumerable<AvailableBookStoreDto>> GetAvailableStoresForReceiptAsync(
+        int receiptId)
+    {
+        var requirements = await _db.SaleReceiptItems
+            .Where(sri => sri.SalesReceiptId == receiptId && sri.BookInStore != null)
+            .Include(sri => sri.BookInStore)
+            .Select(sri => new
+            {
+                BookId    = (int?)sri.BookInStore!.BookId,
+                Qty       = (int)sri.SaleReceiptItemQuantity
+            })
+            .Where(r => r.BookId.HasValue)
+            .ToListAsync();
+
+        if (!requirements.Any())
+            return Enumerable.Empty<AvailableBookStoreDto>();
+
+        var bookReqs = requirements
+            .GroupBy(r => r.BookId!.Value)
+            .Select(g => new { BookId = g.Key, Qty = g.Sum(r => r.Qty) })
+            .ToList();
+
+        var requiredBookIds = bookReqs.Select(r => r.BookId).ToList();
+
+        var stock = await _db.BookInStores
+            .Where(bis => bis.BookId.HasValue && bis.BookStoreId.HasValue &&
+                          requiredBookIds.Contains(bis.BookId.Value))
+            .Select(bis => new
+            {
+                StoreId = bis.BookStoreId!.Value,
+                BookId  = bis.BookId!.Value,
+                Qty     = (int)bis.BookInStoreQuantity
+            })
+            .ToListAsync();
+
+        var eligibleStoreIds = stock
+            .GroupBy(s => s.StoreId)
+            .Where(g =>
+            {
+                var storeStock = g.ToList();
+                return bookReqs.All(req =>
+                    storeStock.Any(s => s.BookId == req.BookId && s.Qty >= req.Qty));
+            })
+            .Select(g => g.Key)
+            .ToHashSet();
+
+        return await _db.BookStores
+            .Where(bs => eligibleStoreIds.Contains(bs.BookStoreId))
+            .OrderBy(bs => bs.BookStoreCode)
+            .Select(bs => new AvailableBookStoreDto(
+                bs.BookStoreId,
+                bs.BookStoreName,
+                bs.BookStoreAddress,
+                bs.BookStoreCode))
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Exact 3-field customer match: find an existing customer whose name, phone,
+    /// and email all equal the provided values (null == empty string treated as null).
+    /// If no match: create a new customer. If no name provided: returns null (anonymous).
+    /// </summary>
+    private async Task<int?> ResolveCustomerAsync(
+        int? customerId,
+        string? fullName,
+        string? phone,
+        string? email)
+    {
+        // Explicit ID shortcut (e.g. selected from dropdown)
+        if (customerId.HasValue) return customerId;
+
+        var name = fullName?.Trim();
+        // Name is required for customer resolution
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        var ph = string.IsNullOrWhiteSpace(phone) ? null : phone!.Trim();
+        var em = string.IsNullOrWhiteSpace(email) ? null : email!.Trim();
+
+        // Exact 3-field match
+        var existing = await _db.Customers.FirstOrDefaultAsync(c =>
+            c.CustomerFullName    == name &&
+            c.CustomerPhoneNumber == ph   &&
+            c.CustomerEmail       == em);
+
+        if (existing is not null)
+            return existing.CustomerId;
+
+        // Create new customer
+        var newCustomer = new Customer
+        {
+            CustomerFullName    = name,
+            CustomerPhoneNumber = ph,
+            CustomerEmail       = em
+        };
+        _db.Customers.Add(newCustomer);
+        await _db.SaveChangesAsync();
+        return newCustomer.CustomerId;
+    }
+
+    private async Task<string> GenerateNextReceiptNumberAsync(string personnelNumber)
+    {
+        var prefix = personnelNumber.Split('-')[0];
+        var pattern = prefix + "-";
+
+        var lastNumber = await _db.SalesReceipts
+            .Where(sr => sr.SalesReceiptNumber.StartsWith(pattern))
+            .OrderByDescending(sr => sr.SalesReceiptNumber)
+            .Select(sr => sr.SalesReceiptNumber)
+            .FirstOrDefaultAsync();
+
+        int next = 1;
+        if (lastNumber is not null)
+        {
+            var seq = lastNumber[(pattern.Length)..];
+            if (int.TryParse(seq, out var last))
+                next = last + 1;
+        }
+
+        return $"{prefix}-{next:D7}";
+    }
 }

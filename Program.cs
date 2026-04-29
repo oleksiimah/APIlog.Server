@@ -3,6 +3,7 @@ using APIlog.Server.Middleware;
 using APIlog.Server.Services;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,6 +44,13 @@ builder.Services.AddScoped<IDictionariesService, DictionariesService>();
 builder.Services.AddScoped<IEmployeesService, EmployeesService>();
 builder.Services.AddScoped<IBranchesService, BranchesService>();
 builder.Services.AddScoped<IChartsService, ChartsService>();
+
+// Auth scheme — needed so UseAuthorization() has a DefaultForbidScheme/ChallengeScheme.
+// Actual authentication is handled by FirebaseAuthMiddleware; this handler only
+// converts Forbid → 403 and Challenge → 401 without touching the token logic.
+builder.Services.AddAuthentication("Firebase")
+    .AddScheme<AuthenticationSchemeOptions, APIlog.Server.Middleware.FirebaseAuthHandler>(
+        "Firebase", null);
 
 // Controllers + OpenAPI
 builder.Services.AddControllers();

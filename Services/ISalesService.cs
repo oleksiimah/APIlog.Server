@@ -9,4 +9,5 @@ public interface ISalesService
     Task<SaleReceiptDetailDto> CreateSaleReceiptAsync(CreateSaleReceiptDto dto, int employeeId);
     Task<SaleReceiptDetailDto> UpdateSaleReceiptAsync(int id, UpdateSaleReceiptDto dto);
     Task DeleteSaleReceiptAsync(int id);
+    Task<IEnumerable<AvailableBookStoreDto>> GetAvailableStoresForReceiptAsync(int receiptId);
 }

@@ -12,6 +12,7 @@ public record SaleReceiptListItemDto(
     string EmployeeFullName,
     string? EmployeePersonnelNumber,
     int? BookStoreId,
+    string? BookStoreName,
     decimal? SalesReceiptTotalAmount,
     string PaymentStatus,
     int ItemCount,
@@ -20,6 +21,7 @@ public record SaleReceiptListItemDto(
 );
 
 public record SaleItemSummaryDto(
+    int SaleReceiptItemId,
     int BookId,
     string BookTitle,
     IEnumerable<string> Authors,
@@ -77,8 +79,8 @@ public record CreateSaleReceiptDto(
 );
 
 public record CreateSaleItemDto(
-    int BookInStoreId,
-    int Quantity
+    int SaleBookInStoreId,
+    int SaleReceiptItemQuantity
 );
 
 public record UpdateSaleReceiptDto(
@@ -86,10 +88,18 @@ public record UpdateSaleReceiptDto(
     string? CustomerFullName,
     string? CustomerPhoneNumber,
     string? CustomerEmail,
+    int? BookStoreId,
     IEnumerable<UpdateSaleItemDto> Items
 );
 
 public record UpdateSaleItemDto(
     int SaleReceiptItemId,
-    int Quantity
+    int SaleReceiptItemQuantity
+);
+
+public record AvailableBookStoreDto(
+    int BookStoreId,
+    string BookStoreName,
+    string BookStoreAddress,
+    string BookStoreCode
 );
