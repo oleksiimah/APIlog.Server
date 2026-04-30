@@ -26,7 +26,7 @@ public class SuppliesService : ISuppliesService
 
         var supply = new SupplyReceipt
         {
-            SupplyReceiptNumber = GenerateReceiptNumber("D"),
+            SupplyReceiptNumber = await GenerateReceiptNumberAsync(),
             EmployeeId = employeeId,
             PurchaseReceiptId = dto.PurchaseReceiptId
         };
@@ -71,22 +71,48 @@ public class SuppliesService : ISuppliesService
             .FirstOrDefaultAsync(sr => sr.SupplyReceiptId == id && sr.EmployeeId == employeeId)
             ?? throw new KeyNotFoundException($"SupplyReceipt {id} not found or access denied.");
 
+        // Remove items that are no longer in the incoming list
+        var incomingIds = dto.Items.Select(i => i.PurchaseReceiptItemId).ToHashSet();
+        var toRemove = supply.SupplyReceiptItems
+            .Where(si => !incomingIds.Contains(si.PurchaseReceiptItemId ?? 0))
+            .ToList();
+        _db.SupplyReceiptItems.RemoveRange(toRemove);
+
+        decimal total = 0m;
         foreach (var item in dto.Items)
         {
             var existing = supply.SupplyReceiptItems
-                .FirstOrDefault(si => si.SupplyReceiptItemId == item.SupplyReceiptItemId);
-            if (existing is null) continue;
+                .FirstOrDefault(si => si.PurchaseReceiptItemId == item.PurchaseReceiptItemId);
 
-            var purchaseItem = existing.PurchaseReceiptItem;
-            var bookInStore = await _bookStoresService.GetOrCreateBookInStoreAsync(
-                purchaseItem?.BookId ?? 0, item.BookStoreId);
+            if (existing is not null)
+            {
+                var bookInStore = await _bookStoresService.GetOrCreateBookInStoreAsync(
+                    existing.PurchaseReceiptItem?.BookId ?? 0, item.BookStoreId);
+                existing.BookInStoreId = bookInStore.BookInStoreId;
+                existing.SupplyReceiptItemQuantity = (short)item.Quantity;
+                total += (existing.PurchaseReceiptItem?.BookPricePerUnit ?? 0) * item.Quantity;
+            }
+            else
+            {
+                // New item added to this supply — look up the purchase receipt item
+                var purchaseItem = await _db.PurchaseReceiptItems
+                    .FirstOrDefaultAsync(pi => pi.PurchaseReceiptItemId == item.PurchaseReceiptItemId);
+                if (purchaseItem is null) continue;
 
-            existing.BookInStoreId = bookInStore.BookInStoreId;
-            existing.SupplyReceiptItemQuantity = (short)item.Quantity;
+                var bookInStore = await _bookStoresService.GetOrCreateBookInStoreAsync(
+                    purchaseItem.BookId ?? 0, item.BookStoreId);
+                _db.SupplyReceiptItems.Add(new SupplyReceiptItem
+                {
+                    SupplyReceiptId = supply.SupplyReceiptId,
+                    PurchaseReceiptItemId = item.PurchaseReceiptItemId,
+                    BookInStoreId = bookInStore.BookInStoreId,
+                    SupplyReceiptItemQuantity = (short)item.Quantity,
+                });
+                total += purchaseItem.BookPricePerUnit * item.Quantity;
+            }
         }
 
-        supply.SupplyReceiptTotalAmount = supply.SupplyReceiptItems
-            .Sum(si => (si.PurchaseReceiptItem?.BookPricePerUnit ?? 0) * si.SupplyReceiptItemQuantity);
+        supply.SupplyReceiptTotalAmount = total;
 
         await _db.SaveChangesAsync();
         return MapToDetail(await LoadWithDetailsAsync(id));
@@ -141,6 +167,44 @@ public class SuppliesService : ISuppliesService
         );
     }
 
-    private static string GenerateReceiptNumber(string prefix)
-        => prefix + Guid.NewGuid().ToString("N")[..12].ToUpper();
+    public async Task DeleteSupplyReceiptAsync(int id, int employeeId)
+    {
+        var supply = await _db.SupplyReceipts
+            .Include(sr => sr.SupplyReceiptItems)
+            .FirstOrDefaultAsync(sr => sr.SupplyReceiptId == id && sr.EmployeeId == employeeId)
+            ?? throw new KeyNotFoundException($"SupplyReceipt {id} not found or access denied.");
+
+        var purchaseReceiptId = supply.PurchaseReceiptId;
+
+        _db.SupplyReceiptItems.RemoveRange(supply.SupplyReceiptItems);
+        _db.SupplyReceipts.Remove(supply);
+        await _db.SaveChangesAsync();
+
+        if (purchaseReceiptId.HasValue)
+        {
+            var purchase = await _db.PurchaseReceipts.FindAsync(purchaseReceiptId.Value);
+            if (purchase?.PurchaseReceiptStatusId == 2)
+            {
+                purchase.PurchaseReceiptStatusId = 1;
+                await _db.SaveChangesAsync();
+            }
+        }
+    }
+
+    private async Task<string> GenerateReceiptNumberAsync()
+    {
+        var prefix = "S" + DateTime.Today.ToString("yyyyMMdd");
+
+        var last = await _db.SupplyReceipts
+            .Where(sr => sr.SupplyReceiptNumber.StartsWith(prefix))
+            .OrderByDescending(sr => sr.SupplyReceiptNumber)
+            .Select(sr => sr.SupplyReceiptNumber)
+            .FirstOrDefaultAsync();
+
+        int next = 1;
+        if (last is not null && int.TryParse(last[prefix.Length..], out var seq))
+            next = seq + 1;
+
+        return $"{prefix}{next:D4}";
+    }
 }

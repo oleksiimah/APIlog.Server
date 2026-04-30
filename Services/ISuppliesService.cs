@@ -6,4 +6,5 @@ public interface ISuppliesService
 {
     Task<SupplyReceiptDetailDto> CreateSupplyReceiptAsync(CreateSupplyReceiptDto dto, int employeeId);
     Task<SupplyReceiptDetailDto> UpdateSupplyReceiptAsync(int id, UpdateSupplyReceiptDto dto, int employeeId);
+    Task DeleteSupplyReceiptAsync(int id, int employeeId);
 }

@@ -40,7 +40,7 @@ public record UpdateSupplyReceiptDto(
 );
 
 public record UpdateSupplyItemDto(
-    int SupplyReceiptItemId,
+    int PurchaseReceiptItemId,
     int BookStoreId,
     int Quantity
 );

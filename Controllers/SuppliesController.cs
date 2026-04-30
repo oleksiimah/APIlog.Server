@@ -34,4 +34,12 @@ public class SuppliesController : ControllerBase
         var receipt = await _suppliesService.UpdateSupplyReceiptAsync(id, dto, employeeId);
         return Ok(receipt);
     }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var employeeId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        await _suppliesService.DeleteSupplyReceiptAsync(id, employeeId);
+        return NoContent();
+    }
 }
