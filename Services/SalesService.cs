@@ -21,6 +21,7 @@ public class SalesService : ISalesService
         var query = _db.SalesReceipts
             .Include(sr => sr.Customer)
             .Include(sr => sr.Employee)
+                .ThenInclude(e => e!.BookStore)
             .Include(sr => sr.SaleReceiptItems)
                 .ThenInclude(si => si.BookInStore)
                     .ThenInclude(bis => bis!.Book)
@@ -63,19 +64,18 @@ public class SalesService : ISalesService
 
         if (!string.IsNullOrWhiteSpace(q.PaymentStatus))
         {
-            receipts = q.PaymentStatus switch
+            var statuses = q.PaymentStatus
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            receipts = receipts.Where(sr =>
             {
-                "paid" => receipts.Where(sr =>
-                    sr.Payments.Sum(p => p.PaymentAmount) >= (sr.SalesReceiptTotalAmount ?? 0)).ToList(),
-                "partial" => receipts.Where(sr =>
-                {
-                    var paid = sr.Payments.Sum(p => p.PaymentAmount);
-                    return paid > 0 && paid < (sr.SalesReceiptTotalAmount ?? 0);
-                }).ToList(),
-                "unpaid" => receipts.Where(sr =>
-                    sr.Payments.Sum(p => p.PaymentAmount) == 0).ToList(),
-                _ => receipts
-            };
+                var paid = sr.Payments.Sum(p => p.PaymentAmount);
+                var total = sr.SalesReceiptTotalAmount ?? 0;
+                var status = paid >= total && total > 0 ? "paid"
+                    : paid > 0 ? "partial"
+                    : "unpaid";
+                return statuses.Contains(status);
+            }).ToList();
         }
 
         if (q.ItemCountMin.HasValue)
@@ -312,6 +312,7 @@ public class SalesService : ISalesService
         return await _db.SalesReceipts
             .Include(sr => sr.Customer)
             .Include(sr => sr.Employee)
+                .ThenInclude(e => e!.BookStore)
             .Include(sr => sr.SaleReceiptItems)
                 .ThenInclude(si => si.BookInStore)
                     .ThenInclude(bis => bis!.Book)
@@ -361,8 +362,8 @@ public class SalesService : ISalesService
             sr.EmployeeId,
             sr.Employee?.EmployeeFullName ?? string.Empty,
             sr.Employee?.EmployeePersonnelNumber,
-            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId,
-            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStore?.BookStoreName,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId ?? sr.Employee?.BookStoreId,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStore?.BookStoreName ?? sr.Employee?.BookStore?.BookStoreName,
             sr.SalesReceiptTotalAmount,
             paymentStatus,
             sr.SaleReceiptItems.Count,
@@ -417,8 +418,8 @@ public class SalesService : ISalesService
             sr.EmployeeId ?? 0,
             sr.Employee?.EmployeeFullName ?? string.Empty,
             sr.Employee?.EmployeePersonnelNumber,
-            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId ?? 0,
-            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStore?.BookStoreName ?? string.Empty,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStoreId ?? sr.Employee?.BookStoreId ?? 0,
+            sr.SaleReceiptItems.FirstOrDefault()?.BookInStore?.BookStore?.BookStoreName ?? sr.Employee?.BookStore?.BookStoreName ?? string.Empty,
             sr.SalesReceiptTotalAmount,
             paymentStatus,
             items,
