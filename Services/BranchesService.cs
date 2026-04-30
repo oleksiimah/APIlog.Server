@@ -29,7 +29,8 @@ public class BranchesService : IBranchesService
             bs.BookStoreAddress,
             bs.Employees.Count,
             bs.BookInStores.Count(bis => bis.BookInStoreQuantity > 0),
-            bs.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity)
+            bs.BookInStores.Sum(bis => (int)bis.BookInStoreQuantity),
+            CanDelete: bs.Employees.Count == 0 && !bs.BookInStores.Any(bis => bis.BookInStoreQuantity > 0)
         ));
     }
 
@@ -78,6 +79,12 @@ public class BranchesService : IBranchesService
     {
         var store = await _db.BookStores.FindAsync(id)
             ?? throw new KeyNotFoundException($"BookStore {id} not found.");
+
+        if (await _db.Employees.AnyAsync(e => e.BookStoreId == id))
+            throw new InvalidOperationException("Філія має співробітників і не може бути видалена.");
+
+        if (await _db.BookInStores.AnyAsync(bis => bis.BookStoreId == id && bis.BookInStoreQuantity > 0))
+            throw new InvalidOperationException("Філія має книги в наявності і не може бути видалена.");
 
         _db.BookStores.Remove(store);
         await _db.SaveChangesAsync();

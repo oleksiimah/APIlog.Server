@@ -7,7 +7,8 @@ public record BranchListItemDto(
     string BookStoreAddress,
     int EmployeeCount,
     int TotalBookTitles,
-    int TotalBooksQuantity
+    int TotalBooksQuantity,
+    bool CanDelete = false
 );
 
 public record CreateBranchDto(

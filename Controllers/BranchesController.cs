@@ -45,7 +45,14 @@ public class BranchesController : ControllerBase
     [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
-        await _branchesService.DeleteBranchAsync(id);
-        return NoContent();
+        try
+        {
+            await _branchesService.DeleteBranchAsync(id);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 }

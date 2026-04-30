@@ -3,8 +3,10 @@ using APIlog.Server.Middleware;
 using APIlog.Server.Services;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
+using Google.Cloud.Firestore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,13 @@ FirebaseApp.Create(new AppOptions
 {
     Credential = await GoogleCredential.GetApplicationDefaultAsync()
 });
+
+// Firestore (same service account, project_id read from the key file)
+var saJson = File.ReadAllText(Path.GetFullPath(serviceAccountPath));
+var projectId = JsonDocument.Parse(saJson).RootElement.GetProperty("project_id").GetString()
+    ?? throw new InvalidOperationException("project_id not found in service account JSON.");
+var firestoreDb = new FirestoreDbBuilder { ProjectId = projectId }.Build();
+builder.Services.AddSingleton(firestoreDb);
 
 // Database
 builder.Services.AddDbContext<BookstoreDbContext>(options =>

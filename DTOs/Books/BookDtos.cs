@@ -37,7 +37,8 @@ public record BookDetailDto(
     IEnumerable<int> AuthorIds,
     IEnumerable<string> Authors,
     int TotalNetworkQuantity,
-    IEnumerable<BookStockByStoreDto> StockByStore
+    IEnumerable<BookStockByStoreDto> StockByStore,
+    bool CanDelete = false
 );
 
 public record BookStockByStoreDto(

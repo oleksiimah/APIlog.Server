@@ -62,7 +62,14 @@ public class EmployeesController : ControllerBase
     [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
-        await _employeesService.DeleteEmployeeAsync(id);
-        return NoContent();
+        try
+        {
+            await _employeesService.DeleteEmployeeAsync(id);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 }

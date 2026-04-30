@@ -9,4 +9,5 @@ public interface IBooksService
     Task<BookDetailDto> CreateBookAsync(CreateBookDto dto);
     Task<BookDetailDto?> UpdateBookAsync(int bookId, UpdateBookDto dto);
     Task<IEnumerable<LowStockBranchDto>> GetLowStockAsync(LowStockQueryParams queryParams);
+    Task DeleteBookAsync(int bookId);
 }

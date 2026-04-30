@@ -148,7 +148,12 @@ public class BooksService : IBooksService
 
         if (book is null) return null;
 
-        return BuildDetailDto(book);
+        bool canDelete =
+            !book.BookInStores.Any(bis => bis.BookInStoreQuantity > 0) &&
+            !await _db.PurchaseReceiptItems.AnyAsync(pi => pi.BookId == bookId) &&
+            !await _db.SaleReceiptItems.AnyAsync(si => si.BookInStore != null && si.BookInStore.BookId == bookId);
+
+        return BuildDetailDto(book, canDelete);
     }
 
     public async Task<BookDetailDto> CreateBookAsync(CreateBookDto dto)
@@ -218,7 +223,35 @@ public class BooksService : IBooksService
         return await GetBookByIdAsync(book.BookId);
     }
 
-    private BookDetailDto BuildDetailDto(Book book) => new BookDetailDto(
+    public async Task DeleteBookAsync(int bookId)
+    {
+        var book = await _db.Books.FindAsync(bookId)
+            ?? throw new KeyNotFoundException($"Book {bookId} not found.");
+
+        bool inStore = await _db.BookInStores.AnyAsync(bis => bis.BookId == bookId && bis.BookInStoreQuantity > 0);
+        if (inStore)
+            throw new InvalidOperationException("Книга є в наявності у філіях і не може бути видалена.");
+
+        bool inReceipt = await _db.PurchaseReceiptItems.AnyAsync(pi => pi.BookId == bookId);
+        if (inReceipt)
+            throw new InvalidOperationException("Книга присутня в закупівлях і не може бути видалена.");
+
+        bool inSale = await _db.SaleReceiptItems
+            .AnyAsync(si => si.BookInStore != null && si.BookInStore.BookId == bookId);
+        if (inSale)
+            throw new InvalidOperationException("Книга присутня в чеках продажів і не може бути видалена.");
+
+        var bookAuthors = await _db.BooksAuthors.Where(ba => ba.BookId == bookId).ToListAsync();
+        _db.BooksAuthors.RemoveRange(bookAuthors);
+
+        var emptyStoreEntries = await _db.BookInStores.Where(bis => bis.BookId == bookId).ToListAsync();
+        _db.BookInStores.RemoveRange(emptyStoreEntries);
+
+        _db.Books.Remove(book);
+        await _db.SaveChangesAsync();
+    }
+
+    private BookDetailDto BuildDetailDto(Book book, bool canDelete = false) => new BookDetailDto(
         book.BookId,
         book.BookTitle,
         book.BookPrice,
@@ -249,7 +282,8 @@ public class BooksService : IBooksService
             .Select(bis => new BookStockByStoreDto(
                 bis.BookStoreId ?? 0,
                 bis.BookStore!.BookStoreName,
-                bis.BookInStoreQuantity))
+                bis.BookInStoreQuantity)),
+        canDelete
     );
 
     public async Task<IEnumerable<LowStockBranchDto>> GetLowStockAsync(LowStockQueryParams q)

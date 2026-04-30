@@ -53,7 +53,14 @@ public class DictionariesController : ControllerBase
     [Authorize(Roles = AppRoles.Admin)]
     public async Task<IActionResult> Delete(string entity, int id)
     {
-        await _dictionariesService.DeleteItemAsync(entity, id);
-        return NoContent();
+        try
+        {
+            await _dictionariesService.DeleteItemAsync(entity, id);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 }

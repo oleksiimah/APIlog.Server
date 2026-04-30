@@ -52,32 +52,77 @@ public class DictionariesService : IDictionariesService
 
     public async Task<IEnumerable<DictionaryItemDto>> GetItemsAsync(string entity)
     {
-        return entity.ToLower() switch
+        switch (entity.ToLower())
         {
-            "authors" => (await _db.Authors.OrderBy(x => x.AuthorFullName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.AuthorId, x.AuthorFullName)),
-            "publishers" => (await _db.Publishers.OrderBy(x => x.PublisherName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.PublisherId, x.PublisherName)),
-            "genres" => (await _db.Genres.OrderBy(x => x.GenreName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.GenreId, x.GenreName)),
-            "subjects" => (await _db.Subjects.OrderBy(x => x.SubjectName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.SubjectId, x.SubjectName)),
-            "languages" => (await _db.Languages.OrderBy(x => x.LanguageName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.LanguageId, x.LanguageName)),
-            "covertypes" => (await _db.CoverTypes.OrderBy(x => x.CoverTypeName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.CoverTypeId, x.CoverTypeName)),
-            "booktypes" => (await _db.BookTypes.OrderBy(x => x.BookTypeName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.BookTypeId, x.BookTypeName)),
-            "posts" => (await _db.Posts.OrderBy(x => x.PostName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.PostId, x.PostName)),
-            "paymentmethods" => (await _db.PaymentMethods.OrderBy(x => x.PaymentMethodName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.PaymentMethodId, x.PaymentMethodName)),
-            "suppliers" => (await _db.Suppliers.OrderBy(x => x.SupplierName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.SupplierId, x.SupplierName)),
-            "purchasestatuses" => (await _db.PurchaseReceiptStatuses.OrderBy(x => x.PurchaseReceiptStatusName).ToListAsync())
-                .Select(x => new DictionaryItemDto(x.PurchaseReceiptStatusId, x.PurchaseReceiptStatusName)),
-            _ => throw new ArgumentException($"Unknown entity: {entity}")
-        };
+            case "authors":
+            {
+                var used = await _db.BooksAuthors.Select(ba => ba.AuthorId).Distinct().ToHashSetAsync();
+                return (await _db.Authors.OrderBy(x => x.AuthorFullName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.AuthorId, x.AuthorFullName, !used.Contains(x.AuthorId)));
+            }
+            case "publishers":
+            {
+                var used = await _db.Books.Where(b => b.PublisherId.HasValue).Select(b => b.PublisherId!.Value).Distinct().ToHashSetAsync();
+                return (await _db.Publishers.OrderBy(x => x.PublisherName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.PublisherId, x.PublisherName, !used.Contains(x.PublisherId)));
+            }
+            case "genres":
+            {
+                var used = await _db.Books.Where(b => b.BookGenreId.HasValue).Select(b => b.BookGenreId!.Value).Distinct().ToHashSetAsync();
+                return (await _db.Genres.OrderBy(x => x.GenreName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.GenreId, x.GenreName, !used.Contains(x.GenreId)));
+            }
+            case "subjects":
+            {
+                var used = await _db.Books.Where(b => b.SubjectId.HasValue).Select(b => b.SubjectId!.Value).Distinct().ToHashSetAsync();
+                return (await _db.Subjects.OrderBy(x => x.SubjectName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.SubjectId, x.SubjectName, !used.Contains(x.SubjectId)));
+            }
+            case "languages":
+            {
+                var used = await _db.Books.Where(b => b.LanguageId.HasValue).Select(b => b.LanguageId!.Value).Distinct().ToHashSetAsync();
+                return (await _db.Languages.OrderBy(x => x.LanguageName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.LanguageId, x.LanguageName, !used.Contains(x.LanguageId)));
+            }
+            case "covertypes":
+            {
+                var used = await _db.Books.Where(b => b.CoverTypeId.HasValue).Select(b => b.CoverTypeId!.Value).Distinct().ToHashSetAsync();
+                return (await _db.CoverTypes.OrderBy(x => x.CoverTypeName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.CoverTypeId, x.CoverTypeName, !used.Contains(x.CoverTypeId)));
+            }
+            case "booktypes":
+            {
+                var used = await _db.Books.Where(b => b.BookTypeId.HasValue).Select(b => b.BookTypeId!.Value).Distinct().ToHashSetAsync();
+                return (await _db.BookTypes.OrderBy(x => x.BookTypeName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.BookTypeId, x.BookTypeName, !used.Contains(x.BookTypeId)));
+            }
+            case "posts":
+            {
+                var used = await _db.Employees.Select(e => e.EmployeePostId).Distinct().ToHashSetAsync();
+                return (await _db.Posts.OrderBy(x => x.PostName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.PostId, x.PostName, !used.Contains(x.PostId)));
+            }
+            case "paymentmethods":
+            {
+                var used = await _db.Payments.Select(p => p.PaymentMethodId).Distinct().ToHashSetAsync();
+                return (await _db.PaymentMethods.OrderBy(x => x.PaymentMethodName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.PaymentMethodId, x.PaymentMethodName, !used.Contains(x.PaymentMethodId)));
+            }
+            case "suppliers":
+            {
+                var used = await _db.PurchaseReceipts.Select(pr => pr.SupplierId).Distinct().ToHashSetAsync();
+                return (await _db.Suppliers.OrderBy(x => x.SupplierName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.SupplierId, x.SupplierName, !used.Contains(x.SupplierId)));
+            }
+            case "purchasestatuses":
+            {
+                var used = await _db.PurchaseReceipts.Select(pr => pr.PurchaseReceiptStatusId).Distinct().ToHashSetAsync();
+                return (await _db.PurchaseReceiptStatuses.OrderBy(x => x.PurchaseReceiptStatusName).ToListAsync())
+                    .Select(x => new DictionaryItemDto(x.PurchaseReceiptStatusId, x.PurchaseReceiptStatusName, !used.Contains(x.PurchaseReceiptStatusId)));
+            }
+            default:
+                throw new ArgumentException($"Unknown entity: {entity}");
+        }
     }
 
     public async Task<DictionaryItemDto> CreateItemAsync(string entity, CreateDictionaryItemDto dto)
@@ -185,34 +230,59 @@ public class DictionariesService : IDictionariesService
         {
             case "authors":
                 var author = await _db.Authors.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.BooksAuthors.AnyAsync(ba => ba.AuthorId == id))
+                    throw new InvalidOperationException("Автор використовується в книгах і не може бути видалений.");
                 _db.Authors.Remove(author); break;
             case "publishers":
                 var publisher = await _db.Publishers.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Books.AnyAsync(b => b.PublisherId == id))
+                    throw new InvalidOperationException("Видавництво використовується в книгах і не може бути видалене.");
                 _db.Publishers.Remove(publisher); break;
             case "genres":
                 var genre = await _db.Genres.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Books.AnyAsync(b => b.BookGenreId == id))
+                    throw new InvalidOperationException("Жанр використовується в книгах і не може бути видалений.");
                 _db.Genres.Remove(genre); break;
             case "subjects":
                 var subject = await _db.Subjects.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Books.AnyAsync(b => b.SubjectId == id))
+                    throw new InvalidOperationException("Тематика використовується в книгах і не може бути видалена.");
                 _db.Subjects.Remove(subject); break;
             case "languages":
                 var language = await _db.Languages.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Books.AnyAsync(b => b.LanguageId == id))
+                    throw new InvalidOperationException("Мова використовується в книгах і не може бути видалена.");
                 _db.Languages.Remove(language); break;
             case "covertypes":
                 var coverType = await _db.CoverTypes.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Books.AnyAsync(b => b.CoverTypeId == id))
+                    throw new InvalidOperationException("Тип обкладинки використовується в книгах і не може бути видалений.");
                 _db.CoverTypes.Remove(coverType); break;
             case "booktypes":
                 var bookType = await _db.BookTypes.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Books.AnyAsync(b => b.BookTypeId == id))
+                    throw new InvalidOperationException("Тип книги використовується в книгах і не може бути видалений.");
                 _db.BookTypes.Remove(bookType); break;
             case "posts":
                 var post = await _db.Posts.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Employees.AnyAsync(e => e.EmployeePostId == id))
+                    throw new InvalidOperationException("Посада призначена співробітникам і не може бути видалена.");
                 _db.Posts.Remove(post); break;
             case "paymentmethods":
                 var method = await _db.PaymentMethods.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.Payments.AnyAsync(p => p.PaymentMethodId == id))
+                    throw new InvalidOperationException("Метод оплати використовується в платежах і не може бути видалений.");
                 _db.PaymentMethods.Remove(method); break;
             case "suppliers":
                 var supplier = await _db.Suppliers.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.PurchaseReceipts.AnyAsync(pr => pr.SupplierId == id))
+                    throw new InvalidOperationException("Постачальник використовується в закупівлях і не може бути видалений.");
                 _db.Suppliers.Remove(supplier); break;
+            case "purchasestatuses":
+                var status = await _db.PurchaseReceiptStatuses.FindAsync(id) ?? throw new KeyNotFoundException();
+                if (await _db.PurchaseReceipts.AnyAsync(pr => pr.PurchaseReceiptStatusId == id))
+                    throw new InvalidOperationException("Статус закупівлі використовується в закупівлях і не може бути видалений.");
+                _db.PurchaseReceiptStatuses.Remove(status); break;
             default:
                 throw new ArgumentException($"Unknown entity: {entity}");
         }

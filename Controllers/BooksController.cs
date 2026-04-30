@@ -65,6 +65,25 @@ public class BooksController : ControllerBase
         return book is null ? NotFound() : Ok(book);
     }
 
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        try
+        {
+            await _booksService.DeleteBookAsync(id);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
     private int? GetBookStoreId()
     {
         var val = User.FindFirstValue("bookstore_id");

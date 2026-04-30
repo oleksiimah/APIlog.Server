@@ -1,6 +1,6 @@
 namespace APIlog.Server.DTOs.Dictionaries;
 
-public record DictionaryItemDto(int Id, string Name);
+public record DictionaryItemDto(int Id, string Name, bool CanDelete = false);
 
 public record DictionaryCategoryDto(string Entity, string DisplayName, int Count);
 

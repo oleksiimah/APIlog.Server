@@ -8,7 +8,9 @@ public record EmployeeDto(
     string? PostName,
     int? BookStoreId,
     string? BookStoreName,
-    string? Email
+    string? Email,
+    string? Password = null,
+    bool CanDelete = false
 );
 
 public record CreateEmployeeDto(
