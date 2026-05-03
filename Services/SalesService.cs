@@ -527,6 +527,9 @@ public class SalesService : ISalesService
         return newCustomer.CustomerId;
     }
 
+    public Task<string> GetNextReceiptNumberAsync(string personnelNumber) =>
+        GenerateNextReceiptNumberAsync(personnelNumber);
+
     private async Task<string> GenerateNextReceiptNumberAsync(string personnelNumber)
     {
         var prefix = personnelNumber.Split('-')[0];

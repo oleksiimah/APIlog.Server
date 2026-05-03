@@ -328,6 +328,9 @@ public class PurchasesService : IPurchasesService
         return newSupplier.SupplierId;
     }
 
+    public Task<string> GetNextReceiptNumberAsync() =>
+        GenerateReceiptNumberAsync();
+
     private async Task<string> GenerateReceiptNumberAsync()
     {
         var prefix = "P" + DateTime.Today.ToString("yyyyMMdd");

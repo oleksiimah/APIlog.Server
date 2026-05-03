@@ -74,4 +74,12 @@ public class PurchasesController : ControllerBase
         await _purchasesService.DeletePurchaseReceiptAsync(id);
         return NoContent();
     }
+
+    [HttpGet("next-receipt-number")]
+    [Authorize(Roles = $"{AppRoles.PurchaseManager},{AppRoles.Admin},{AppRoles.Storekeeper}")]
+    public async Task<IActionResult> GetNextReceiptNumber()
+    {
+        var number = await _purchasesService.GetNextReceiptNumberAsync();
+        return Ok(new { receiptNumber = number });
+    }
 }

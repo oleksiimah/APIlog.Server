@@ -11,4 +11,5 @@ public interface IPurchasesService
     Task CancelPurchaseReceiptAsync(int id);
     Task RestorePurchaseReceiptAsync(int id);
     Task DeletePurchaseReceiptAsync(int id);
+    Task<string> GetNextReceiptNumberAsync();
 }

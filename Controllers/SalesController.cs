@@ -92,6 +92,14 @@ public class SalesController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("next-receipt-number")]
+    public async Task<IActionResult> GetNextReceiptNumber()
+    {
+        var personnelNumber = User.FindFirstValue("personnel_number") ?? string.Empty;
+        var number = await _salesService.GetNextReceiptNumberAsync(personnelNumber);
+        return Ok(new { receiptNumber = number });
+    }
+
     [HttpGet("{id:int}/available-stores")]
     public async Task<IActionResult> GetAvailableStores(int id)
     {
